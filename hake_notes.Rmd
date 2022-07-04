@@ -1,0 +1,51 @@
+---
+title: "Hake Notes"
+author: "Andrea Odell"
+date: '2022-07-04'
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+### June 27 - July 1, 2022
+
+Received acoustic-trawl survey data through NOAA data warehouse - 103,245 observations. Data for 1980 - 2017 are included. I began by creating a new dataset, `hake_df` that included only Pacific Hake observations and relevant information (columns) - 93,186 observations. Date information from the `eq_date` column were used, however, observations with missing years were filled in using information from `hb_date` column. This constituted only observations from year 2017.
+
+![](plots/observations_per_year.jpeg)
+
+There are 46,816 female observations and 44,982 male observations. There seems to be a fairly equivalent number of males vs females.
+
+![Log10-transformed length weight relationship](plots/visualize_data.jpeg)
+
+Looking more closely at growth, particularly the relationship between length and weight, much of the unknown sex descriptions come from smaller sized fish which makes sense. Females and Males seem to follow very similar growth trends, as indicated by fitting separate growth models to each sex and estimated coefficients being fairly similar. Visually, there seems to be a greater abundance of females at those larger sizes.
+
+Because of the similarity between males and females and because males and females are not modeled explicitly in the stock assessment, I went ahead and continued modeling the sexes aggregated together. I did this by first subsetting `hake_df` to observations that had complete length and weight information `fit_hake_df` - 52,382 observations. I log10-transformed the data (this was recommended over natural log transformation), and fit a linear model using `lm()`, a least squares method. The resulting model then became $$log_{10}(W) = log_{10}(a) + b*log_{10}(L)$$.
+
+![](plots/fitted_growth_overdata.jpeg)![](plots/residuals.jpeg)
+
+Above is the fitted model over the raw data and a plot of the residuals. The multuple R-squared value of the fit is 0.9819, which means that 98% of the variability can be explained by the model - which is great!
+
+From now, I will be referring to residuals as growth anomalies (... makes more sense in my brain). These next few plots will be exploring patterns in growth anomalies as it relates to time, location, and age.
+
+![Summary of growth anomalies per year](plots/avg_residual_violin.jpeg)
+
+This first graph shows the variability in growth anomalies per year. Immediately, you notice that 1995, 2007, and 2017 have considerable variability in growth anomalies between individuals (i.e. there is a wide distribution of individuals who are both larger and smaller than normal). The distribution in 2007 is largely driven by 3 outliers, where those outliers are small (length) individuals that are much heavier (weight) than normal. I believe this may be due to measurement error. Years 1995 and 2017 are years adjacent to record warm years (marine heatwaves) which may have led to this variability in growth anomalies due to differential responses between fish (spatial or perhaps age?).
+
+![outlier removed](plots/avg_residual_violin_rm.outlier.jpeg)
+
+This plot removes the outliers from 2007. You can see that the 3 outliers really drive the distribution - how should we handle these outliers?
+
+
+![Spatial variation of growth anomalies by year](plots/spatial_resids_year.jpeg)
+
+This graph shows how growth anomalies vary along the west coast every year. Values close to 0 (i.e. observed value is close to predicted - no anomaly) are transparent for better visualization of + and - values. Moreover, those 3 outliers in 2007 are included in the graph, but not in the color scale limit, for improved visualization. You can see there is considerable year-to-year variation, where in 1998 and 2015 you see mostly smaller-than-avg fish all along the coast and aligns with the years with marine heatwaves. In some years, there seems to be a slight stratification, where the northern half of the coast shows larger or smaller-than-avg individuals and southern half vice versa. An issue with this graph is that you can't see individuals who do not exhibit a growth anomaly, which I think would be valuable to see if this occurs in a part of the coast. 
+
+![growth anomalies timeseries by age](plots/anomaly_timeseries_age.jpeg)
+
+A time series of average growth anomalies per age group. This essentially reveals how variable growth anomalies are per age - are some ages more vulnerable to variation in growth? are some age classes consistently larger or smaller than average? Either way, this plot is a little hard to decipher.
+
+
+
+
+### July 4-8, 2022
