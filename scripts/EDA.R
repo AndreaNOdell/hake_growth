@@ -1,7 +1,7 @@
 library(tidyverse)
 library(PNWColors)
 library(bbmle)
-library(FSA)
+library(fishmethods)
 
 df = read.csv("raw_data/selection.csv") # load in data
 #colnames(df)
@@ -42,6 +42,28 @@ ggplot(hake_df, aes(x = log10(length), y = log10(weight), col = sex_description)
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
   theme_classic() +
   scale_colour_manual(values = pal, limits = c('Female', 'Male', 'Unknown/Not determined'))
+dev.off()
+
+jpeg(file="plots/length_freq_year.jpeg")
+hake_df %>% 
+  group_by(catch_year, length) %>% 
+  summarise(n = n())  %>% 
+  ggplot(aes(x = length, y = n)) +
+  geom_col() +
+  theme_classic() +
+  facet_wrap(vars(catch_year))
+dev.off()
+
+
+# spatial variation from year to year in sampling
+jpeg(file="plots/spatial_sampling_year.jpeg")
+ggplot(hake_df, aes(x = hb_longitude, y = hb_latitude)) +
+  geom_point() +
+  #scale_colour_gradient2(limits = c(-0.5, 0.5), mid = NA) +
+  theme_classic() +
+  facet_wrap(vars(catch_year)) +
+  scale_x_reverse() +
+  labs(main = "spatial variation in sampling per year")
 dev.off()
 
 ####
@@ -173,12 +195,14 @@ fit_hake_df %>%
 dev.off()
 
 # the SD of the temporal growth anomalies for each age.
+jpeg(file="plots/variable_resids_age.jpeg")
 fit_hake_df %>% 
   group_by(age) %>% 
   summarise(avg = mean(resids), sd = sd(resids), n = n()) %>% 
   ggplot(aes(x = age, y = sd)) +
     geom_point(aes(size = n)) +
     theme_classic()
+dev.off()
 
 
 
@@ -202,6 +226,109 @@ fit_hake_df %>%
 # 2011 stock assessment fit Von Bertalanffy models 
 # but they first split the data into to regimes - 1975-1989 and 1990-2010
 
+# I'm going to start by fitting a curve to all the data.
+age_hake_df = hake_df[complete.cases(hake_df[ , c('age', 'length')]), ] # subset the data for only complete cases of age and length
+growth_aggregated = growth(intype = 1, unit = 1, size = age_hake_df$length, age = age_hake_df$age, 
+                      Sinf = 80, K = 0.5, t0 = 4)
+
+Sinf_aggregated = 51.6616
+K_aggregated = 0.3655
+t0_aggregated = -0.7004
+# RSS = 551852
+
+jpeg(file="plots/aggregate_growth_curve.jpeg")
+plot(age_hake_df$age, age_hake_df$length, type = "p", col = 'blue')
+lines(0:25, Sinf_aggregated * (1 - exp(-(K_aggregated * (0:25 - t0_aggregated)))), type = 'l', lwd = 2, col = "red")
+dev.off()
 
 
+# Two regimes (1980-2003; 2004-2017)
+pre_2003_df = age_hake_df %>%  # 24,403 observations
+  filter(catch_year < 2004)
+
+growth_pre2003 = growth(intype = 1, unit = 1, size = pre_2003_df$length, age = pre_2003_df$age, 
+                           Sinf = 80, K = 0.5, t0 = 4)
+
+Sinf_pre2003 = 51.9182
+K_pre2003 = 0.3634
+t0_pre2003 = -0.891
+#RSS = 324002
+
+plot(age_hake_df$age, age_hake_df$length, type = "p", col = 'blue')
+lines(0:25, Sinf_pre2003 * (1 - exp(-(K_pre2003 * (0:25 - t0_pre2003)))), type = 'l', lwd = 2)
+
+post_2003_df = age_hake_df %>%  # 24,403 observations
+  filter(catch_year > 2003)
+
+growth_post2003 = growth(intype = 1, unit = 1, size = post_2003_df$length, age = post_2003_df$age,
+                        Sinf = 80, K = 0.5, t0 = 4)
+
+Sinf_post2003 = 51.1816
+K_post2003 = 0.3501
+t0_post2003 = -0.7535     
+# RSS = 200280
+
+plot(age_hake_df$age, age_hake_df$length, type = "p", col = 'blue')
+lines(0:25, Sinf_post2003 * (1 - exp(-(K_post2003 * (0:25 - t0_post2003)))), type = 'l', lwd = 2)
+
+
+# These don't look good.....
+
+# Maybe I should concatenate the plus group first, so that there are more observations 
+# for those age classes.
+
+# assign all ages 15+ the age 15. 
+hake_df = hake_df %>% 
+  mutate(new_age = age)
+hake_df$new_age = as.integer(lapply(hake_df$new_age, function(x) ifelse(x > 14, 15, x)))
+# fit model to complete weight and length cases
+fit_hake_df <- hake_df[complete.cases(hake_df[ , c('weight', 'length')]), ] #subset dataset for complete cases 
+growth_fit = lm(log10(weight)~log10(length),data=fit_hake_df) # run the model
+# add residual info back to dataset
+fit_hake_df = fit_hake_df %>% 
+  mutate(resids = residuals(growth_fit))
+
+# Let's take a quick look at the variability of growth anomalies by age
+# i.e.
+jpeg(file="plots/resid_sd_age_plusgroup.jpeg")
+fit_hake_df %>% 
+  group_by(new_age) %>% 
+  summarise(avg = mean(resids), sd = sd(resids), n = n()) %>% 
+  mutate(positive = avg > 0) %>% 
+  ggplot(aes(x = new_age, y = sd, col = positive)) +
+  geom_point(aes(size = n)) +
+  theme_classic() +
+  labs(y = "residual standard deviation", x = "age", title = "growth anomaly variability by age")
+dev.off()
+
+
+age_hake_df = hake_df[complete.cases(hake_df[ , c('new_age', 'length')]), ] # subset the data for only complete cases of age and length
+
+growth_plusgroup = growth(intype = 1, unit = 1, size = age_hake_df$length, age = age_hake_df$new_age, 
+                           Sinf = 80, K = 0.5, t0 = 4)
+
+Sinf_plus = 51.6614
+K_plus = 0.3655
+t0_plus = -0.7002     
+# RSS = 551912
+
+plot(age_hake_df$age, age_hake_df$length, type = "p", col = 'blue')
+lines(0:25, Sinf_plus * (1 - exp(-(K_plus * (0:25 - t0_plus)))), type = 'l', lwd = 2, lty = 2)
+
+
+# It doesn't matter whether you keep all ages or create a plus group - the growth
+# model remains basically the same
+
+ggplot(age_hake_df, aes(x = age, y = length)) +
+  geom_point() +
+  theme_classic() +
+  facet_wrap(vars(catch_year))
+
+
+# Frequency distribution of lengths per age
+jpeg(file="plots/length_freq_age.jpeg")
+ggplot(hake_df, aes(x = length, col = new_age)) +
+  geom_freqpoly() +
+  theme_classic()
+dev.off()
 
