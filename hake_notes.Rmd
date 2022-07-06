@@ -36,16 +36,49 @@ This first graph shows the variability in growth anomalies per year. Immediately
 
 This plot removes the outliers from 2007. You can see that the 3 outliers really drive the distribution - how should we handle these outliers?
 
+![Avg growth anomalies per year](plots/avg_residual_year.jpeg)
+
+This plot is looking at the average growth anomalies per year without the spread of data. It looks like many of the years prior to 2003 were dominated by larger-than-avg individuals, except the year in which a marine heatwave occured. Following 2003, many of the years are dominated by smaller-than-avg individuals with the exception of 2013 and 2017. 
 
 ![Spatial variation of growth anomalies by year](plots/spatial_resids_year.jpeg)
 
-This graph shows how growth anomalies vary along the west coast every year. Values close to 0 (i.e. observed value is close to predicted - no anomaly) are transparent for better visualization of + and - values. Moreover, those 3 outliers in 2007 are included in the graph, but not in the color scale limit, for improved visualization. You can see there is considerable year-to-year variation, where in 1998 and 2015 you see mostly smaller-than-avg fish all along the coast and aligns with the years with marine heatwaves. In some years, there seems to be a slight stratification, where the northern half of the coast shows larger or smaller-than-avg individuals and southern half vice versa. An issue with this graph is that you can't see individuals who do not exhibit a growth anomaly, which I think would be valuable to see if this occurs in a part of the coast. 
+This graph shows how growth anomalies vary along the west coast every year. Values close to 0 (i.e. observed value is close to predicted - no anomaly) are transparent for better visualization of + and - values. Moreover, those 3 outliers in 2007 are included in the graph, but not in the color scale limit, for improved visualization. You can see there is considerable year-to-year variation, where in 1998 and 2015 you see mostly smaller-than-avg fish all along the coast and aligns with the years with marine heatwaves. In some years, there seems to be a slight stratification, where the northern half of the coast shows larger or smaller-than-avg individuals and southern half vice versa. An issue with this graph is that you can't see individuals who do not exhibit a growth anomaly, which I think would be valuable to see if this occurs in a part of the coast.
 
 ![growth anomalies timeseries by age](plots/anomaly_timeseries_age.jpeg)
 
 A time series of average growth anomalies per age group. This essentially reveals how variable growth anomalies are per age - are some ages more vulnerable to variation in growth? are some age classes consistently larger or smaller than average? Either way, this plot is a little hard to decipher.
 
+![Variability of growth anomaly by age](plots/variable_resids_age.jpeg)
 
-
+Summarizing the variability of growth anomalies per age even further, we can see that growth anomalies are most variable at age 0 - likely because there's fewer data and potentially greater measurement error - and that variability in growth anomalies increases slightly with age. However, there are fewer observations at those older age classes. I plan to create a plus group, by concatenating the age classes 15+ as done similarly in the stock assessment.
 
 ### July 4-8, 2022
+
+Some next steps I plan to take this week is I will fit an age at length model to assign ages that don't have values. I will create a plus group age, grouping all ages 15 and greater. What sort of changes do we see when we make this assumption? I will explore finer temporal resolution to hopefully get an idea of some of the sampling/selectivity bias that might be happening. Another question was whether there was spatial variation in which sex dominates? All of this should then lead to some statistical modeling to determine relative importance of the patterns that I am seeing.
+
+
+Okay, to start with estimating age using an length-at-age model, I first subsetted the `hake_df` dataframe so that there is only complete cases for age and length columns named `age_hake_df`. Then I added a new column `new_age` which were ages including plus group (ages 15+)
+
+I first fit a Von Bertalanffy model to the whole data (all years combined), then fit a Von Bertalanffy model assuming "two regimes" where I fit the model to years 1980-2003 and 2004-2017, and finally I fit a Von Bertalanffy model to the plus group data. 
+
+I selected the regimes by visually determining years with the most similar average growth anomalies (1980-2003 had larger-than-avg individuals and 2004-2017 had smaller-than-avg).
+
+There was negligible differences in fit and coefficients between the whole data scenario (RSS = 551852) and the plus group scenario (RSS = 551912). However, when the data was split into regimes the fit of the model improved as indicated by the Residual Sum Squares (RSS = 324002/200280).
+
+Overall, the fits didn't look so great - there was a bit of underfitting over the age of 6. The graph below only shows fit for the whole data, however, there were
+
+![Growth curve to whole data](plots/aggregate_growth_curve.jpeg)
+
+
+Because I created a plus group, I wanted to go back and look at some of the data visualizations I did last week to see if there were any big changes. 
+
+
+First, I looked at the variability in growth anomalies per age by plotting the residual standard deviation for each age. The size and color of the points indicate number of observations and whether the residuals are positive on average (i.e. larger-than average), respectively. 
+
+![](plots/resid_sd_age_plusgroup.jpeg)
+
+
+When estimating ages, it's worth making sure I understand what ages we are estimating. Below is a rough length frequency plot by age, where colors indicate age, and the grey line indicates observations that haven't been assigned an age. A lot of the observations with unassigned ages are larger individuals, and the VB models I have explored so far underestimate the ages of those larger indivudals. How should I proceed?
+
+![](plots/length_freq_age.jpeg)
+
