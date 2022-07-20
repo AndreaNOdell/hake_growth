@@ -38,7 +38,7 @@ This plot removes the outliers from 2007. You can see that the 3 outliers really
 
 ![Avg growth anomalies per year](plots/avg_residual_year.jpeg)
 
-This plot is looking at the average growth anomalies per year without the spread of data. It looks like many of the years prior to 2003 were dominated by larger-than-avg individuals, except the year in which a marine heatwave occured. Following 2003, many of the years are dominated by smaller-than-avg individuals with the exception of 2013 and 2017. 
+This plot is looking at the average growth anomalies per year without the spread of data. It looks like many of the years prior to 2003 were dominated by larger-than-avg individuals, except the year in which a marine heatwave occured. Following 2003, many of the years are dominated by smaller-than-avg individuals with the exception of 2013 and 2017.
 
 ![Spatial variation of growth anomalies by year](plots/spatial_resids_year.jpeg)
 
@@ -56,10 +56,9 @@ Summarizing the variability of growth anomalies per age even further, we can see
 
 Some next steps I plan to take this week is I will fit an age at length model to assign ages that don't have values. I will create a plus group age, grouping all ages 15 and greater. What sort of changes do we see when we make this assumption? I will explore finer temporal resolution to hopefully get an idea of some of the sampling/selectivity bias that might be happening. Another question was whether there was spatial variation in which sex dominates? All of this should then lead to some statistical modeling to determine relative importance of the patterns that I am seeing.
 
-
 Okay, to start with estimating age using an length-at-age model, I first subsetted the `hake_df` dataframe so that there is only complete cases for age and length columns named `age_hake_df`. Then I added a new column `new_age` which were ages including plus group (ages 15+)
 
-I first fit a Von Bertalanffy model to the whole data (all years combined), then fit a Von Bertalanffy model assuming "two regimes" where I fit the model to years 1980-2003 and 2004-2017, and finally I fit a Von Bertalanffy model to the plus group data. 
+I first fit a Von Bertalanffy model to the whole data (all years combined), then fit a Von Bertalanffy model assuming "two regimes" where I fit the model to years 1980-2003 and 2004-2017, and finally I fit a Von Bertalanffy model to the plus group data. $size \sim L_{\infty}/(1 + exp(-K * (age - t_0)))$
 
 I selected the regimes by visually determining years with the most similar average growth anomalies (1980-2003 had larger-than-avg individuals and 2004-2017 had smaller-than-avg).
 
@@ -69,16 +68,133 @@ Overall, the fits didn't look so great - there was a bit of underfitting over th
 
 ![Growth curve to whole data](plots/aggregate_growth_curve.jpeg)
 
+Because I created a plus group, I wanted to go back and look at some of the data visualizations I did last week to see if there were any big changes.
 
-Because I created a plus group, I wanted to go back and look at some of the data visualizations I did last week to see if there were any big changes. 
-
-
-First, I looked at the variability in growth anomalies per age by plotting the residual standard deviation for each age. The size and color of the points indicate number of observations and whether the residuals are positive on average (i.e. larger-than average), respectively. 
+First, I looked at the variability in growth anomalies per age by plotting the residual standard deviation for each age. The size and color of the points indicate number of observations and whether the residuals are positive on average (i.e. larger-than average), respectively.
 
 ![](plots/resid_sd_age_plusgroup.jpeg)
-
 
 When estimating ages, it's worth making sure I understand what ages we are estimating. Below is a rough length frequency plot by age, where colors indicate age, and the grey line indicates observations that haven't been assigned an age. A lot of the observations with unassigned ages are larger individuals, and the VB models I have explored so far underestimate the ages of those larger indivudals. How should I proceed?
 
 ![](plots/length_freq_age.jpeg)
+
+Looks like age 6+ are fairly similar lengths - increased potential for mis-assigning these ages?
+
+In terms of the stock assessment, the 2006 assessment modeled growth 3 ways: time-varying K, density dependent growth, and cohort-specific K.
+
+![Length frequencies by year](plots/length_freq_year.jpeg)
+
+Notes from meeting with Kristin 7/7/22
+
+-   The weight/age/year data may not be considered confidential and could request to get that data.
+-   Interesting to look at spatial and temporal variation (check Maia Kapur's work).
+-   Potential big-picture questions
+    -   How can we leverage this information of growth anomalies? Are there cohort effects? Is there an effect on future spawning?
+    -   Are there bigger recruitment events in years with fatter fish?
+    -   Do fish that are fatter in the early lie stages, stay fatter throughout their life?
+    -   Ultimately, how can we develop a model that goes into the MSE?
+-   Next steps:
+    -   Still have to explore finer temporal resolution
+    -   hierarchical or mixed growth model with time varying K
+
+### July 11-15, 2022
+
+-   Meeting with Kelli Johnson (7/14/22) on weight at age
+    -   weighting process
+        -   summarizes the data and then use that to weight things
+        -   assumes all fish of the same age have the same weight
+        -   only use individuals with ages when working with age composition and weight at age
+        -   use individuals with length, weight, and age to groundtruth if needed
+    -   data_wtatage()
+        -   needs maturity ogive and catches to get mean weight at age. uses previous years to fill in missing age information
+        -   assumes every population process going through SS uses the same weight at age (between different data sources - fishery vs survey vs etc)
+        -   sampling date as potential covariates (do we need to take into account sampling month when we do weighting?)
+        -   could model season (season just means month) but the caveat is that we need to fill in everything, and so that's just more estimating ages
+        -   if the estimated ages look the same regardless if we add biological realism then who cares
+        -   female only modeled
+        -   ignoring this dilutes the potential that surveys/data sources are sampling different fish
+        -   may need some way to fill in missing information better based on the results that we (kristin and i) find
+            -   what if there's a regime shift but we don't account for that
+            -   are there environmental covariates that may drive changes in weight at age?
+        -   SS there's flexibility in how you want to fill in these values
+        -   factors influencing weight at age
+            -   sampling bias
+            -   cohort effects
+            -   environmental effects
+        -   check how Pollock assessment fills in missing information
+        -   Sablefish also has a lot of data to test on
+        -   visualize weight at age over the raw data to see if there are strong cohorts coming through
+        -   Line 157 in github code - beginning of where they fill in missing values
+-   Meeting with Kristin
+    -   random effects
+        -   year
+        -   cohort
+        -   to establish cohort, we can create a cohort ID that is their birth year (cohort ID = current year - age) - We could also look at how growth anomalies relate to the size of the population or cohort to get into some density dependence effects
+    -   3 potential ways to model weight at age
+        -   random effect just on age
+        -   gam (does brms have gams)
+        -   boosted regression trees
+            -   Doesn't give insight into mechanism, so might be difficult to translate into something for MSE
+    -   For the growth anomaly variability line graph, we could also look at
+        -   ages 1 and 2
+        -   immature vs mature fish
+        -   To think about: age 3 fish have fairly variable growth anomalies and they are also the biggest contributor to recruitment
+            -   how does this variability affect population dynamics
+    -   Note: big cohorts happened in 1999 and 2010
+
+I tested out different GAMs using `gam()`, as well as running it in `brms`.
+
+1.  Simple GAM with no random effects
+
+```{r, eval = FALSE}
+gam_out <- gam(weight ~ s(new_age), data = hake_weight_age_df, method = "REML")
+```
+
+2.  GAM with group-level smoothers with different wiggliness for year
+
+```{r, eval = FALSE}
+gamm_out = gam(weight ~ s(new_age, bs="tp") +
+      s(new_age, by = catch_year, m = 1, bs="tp") +
+      s(catch_year, bs="re"), 
+      data = hake_weight_age_df, method="REML")
+```
+
+3.  GAM with group-level smoothers with same wiggliness for year
+
+```{r, eval = FALSE}
+gamm_GS_out = gam(weight ~ s(new_age, m = 2) +
+                 s(new_age, catch_year, bs="fs", m = 2), 
+               data = hake_weight_age_df, method="REML")
+```
+
+![](plots/weight-at-age/avg_growth_anomaly_gams.jpeg)
+
+
+4.  GAM with group-level smoothers with different wiggliness for cohort
+
+```{r, eval = FALSE}
+gamm_cohort_out = gam(weight ~ s(new_age, bs="tp") +
+                        s(new_age, by = cohort, m = 1, bs="tp") +
+                        s(cohort, bs="re"), 
+                      data = hake_weight_age_df, method="REML")
+```
+
+5.  GAM with group-level smoothers with same wiggliness for cohort
+
+```{r, eval = FALSE}
+gamm_GS_cohort_out = gam(weight ~ s(new_age, m = 2) +
+                    s(new_age, cohort, bs="fs", m = 2), 
+                  data = hake_weight_age_df, method="REML")
+```
+
+![](plots/weight-at-age/avg_growth_anomaly_cohort_gams.jpeg)
+
+
+Of all 5 models, `gamm_GS_cohort_out` had the smallest AIC value. 
+
+- Notes on weight-length and weight-at-age and how they may relate   
+    - weight-length relationships are indicative of "body condition"
+    - weight-at-age is a rate, so potentially indicative of growth rate
+
+
 
