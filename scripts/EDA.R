@@ -282,7 +282,9 @@ hake_df = hake_df %>%
   mutate(new_age = age)
 hake_df$new_age = as.integer(lapply(hake_df$new_age, function(x) ifelse(x > 14, 15, x)))
 # fit model to complete weight and length cases
-fit_hake_df <- hake_df[complete.cases(hake_df[ , c('weight', 'length')]), ] #subset dataset for complete cases 
+fit_hake_df <- hake_df[complete.cases(hake_df[ , c('weight', 'length')]), ]#subset dataset for complete cases 
+fit_hake_df$cohort = as.numeric(fit_hake_df$catch_year) - fit_hake_df$new_age
+
 growth_fit = lm(log10(weight)~log10(length),data=fit_hake_df) # run the model
 # add residual info back to dataset
 fit_hake_df = fit_hake_df %>% 
@@ -331,4 +333,126 @@ ggplot(hake_df, aes(x = length, col = new_age)) +
   geom_freqpoly() +
   theme_classic()
 dev.off()
+
+
+ggplot(hake_df, aes(x = length, col = new_age)) +
+  geom_freqpoly() +
+  theme_classic() +
+  facet_wrap(vars(catch_year))
+
+
+
+# Add estimated ages----------------------------------------------------------------------
+
+plot(hake_df$age, hake_df$length, type = "p")
+lines(seq(0,25,by = 0.1), 49.71 - (49.71 - 1)*exp(-0.51*seq(0,25,by = 0.1)), col = 'red')
+
+plot(hake_df$length, hake_df$age, type = "p")
+lines(x = seq(0.1,49,by = 0.1), t, col = "red")
+
+calc_age = function(length) {
+  if(length < 49.71) {
+    x = (log(-c(length) + 49.71) - log(49.71 - 1)) /(-0.51)
+    return(x)
+  } else {
+    x = 15
+    return(x)
+  }
+}
+
+hake_no_age <- hake_df[is.na(hake_df$age),] 
+hake_no_age = hake_no_age[complete.cases(hake_no_age[ , c('length')]), ] %>% 
+  mutate(new_age = if_else(length < 49.71, ((log(-length + 49.71) - log(49.71 - 1)) /(-0.51)), rlnorm(1, 2.127496758, 0.283937767))) 
+hake_no_age$new_age = round(hake_no_age$new_age)
+
+unique(hake_no_age$new_age)
+
+
+# Let's look at the distribution of fish ages for fish greater than 49.71cm
+library(MASS)
+x = na.omit(hake_df[hake_df$length > 49.71,]$age)
+fitdistr(x, "lognormal")
+hist(x, prob = TRUE)
+curve(dlnorm(x, 2.127496758, 0.283937767), col = 2, add = TRUE)
+
+rlnorm(1, 2.127496758, 0.283937767)
+
+
+
+# let's look at finer temporal resolution   ---------------------------------
+head(fit_hake_df)
+
+# this plot shows the avg resids per month per year
+jpeg(file="plots/resids_month_year.jpeg")
+fit_hake_df %>% 
+  group_by(catch_year, catch_month) %>% 
+  summarise(avg = mean(resids), sd = sd(resids), n = n()) %>% 
+  filter(!is.na(catch_month)) %>% 
+  ggplot(aes(x = catch_month, y = avg)) +
+      geom_point(aes(size = n)) +
+      geom_hline(yintercept = 0, lty = 2) +
+      facet_wrap(vars(catch_year)) +
+      theme_classic() +
+      labs(title = "variability in growth anomalies within sampling year", x = "sampling month", y = "avg growth anomaly")
+dev.off()
+
+
+# this plot shows the sampling movement up the coast through the summer
+fit_hake_df %>% 
+  group_by(catch_year, catch_month) %>% 
+  summarise(avglat = mean(hb_latitude), avgweight = mean(weight)) %>% 
+  filter(!is.na(catch_month)) %>% 
+  ggplot(aes(x = catch_month, y = avglat, size = avgweight)) +
+      geom_point() +
+      #geom_hline(yintercept = 0, lty = 2) +
+      facet_wrap(vars(catch_year)) +
+      theme_classic()
+
+pal2 = pnw_palette(name="Sunset2",n=6,type="discrete") # set color palette
+
+jpeg(file="plots/growth_variability_3.7.15.jpeg")
+fit_hake_df %>% 
+  group_by(catch_year, age) %>% 
+  summarise(avgresids = mean(resids)) %>% 
+  filter(age %in% c(1,2)) %>% 
+  ggplot(aes(x = as.factor(catch_year), y = avgresids, colour = as.factor(age), group = as.factor(age))) +
+      geom_line() +
+      geom_hline(yintercept = 0, lty = 2) +
+      theme_classic() +
+      theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+      labs(title = "Variability in growth anomalies through time", subtitle = "for ages 3, 7, and 15", x = "Year", y = "avg growth anomaly") +
+      scale_colour_manual(values = pal2)
+dev.off()
+
+
+# Looking at average weight per month per year
+jpeg(file="plots/weight_month_year.jpeg")
+fit_hake_df %>% 
+  group_by(catch_year, catch_month) %>% 
+  summarise(avg = mean(weight), sd = sd(resids), n = n()) %>% 
+  filter(!is.na(catch_month)) %>% 
+  ggplot(aes(x = catch_month, y = avg)) +
+  geom_point(aes(size = n)) +
+  #geom_hline(yintercept = 0, lty = 2) +
+  facet_wrap(vars(catch_year)) +
+  theme_classic() +
+  labs(title = "variability in weight within sampling year", x = "sampling month", y = "avg weight")
+dev.off()
+
+
+
+fit_hake_df %>% 
+  group_by(catch_year, cohort) %>% 
+  summarise(avgresids = mean(resids), n = n()) %>% 
+  filter(cohort %in% c(1993, 1996, 1999, 2005, 2010, 2014)) %>% 
+  ggplot(aes(x = as.factor(catch_year), y = avgresids, colour = as.factor(cohort), group = as.factor(cohort))) +
+  geom_line() +
+  geom_hline(yintercept = 0, lty = 2) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  labs(title = "Variability in growth anomalies through time", subtitle = "for ages 3, 7, and 15", x = "Year", y = "avg growth anomaly") +
+  scale_colour_manual(values = pal2)
+
+
+
 
