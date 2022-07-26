@@ -408,13 +408,13 @@ fit_hake_df %>%
       facet_wrap(vars(catch_year)) +
       theme_classic()
 
-pal2 = pnw_palette(name="Sunset2",n=6,type="discrete") # set color palette
+pal2 = pnw_palette(name="Sunset2",n=5,type="discrete") # set color palette
 
 jpeg(file="plots/growth_variability_3.7.15.jpeg")
 fit_hake_df %>% 
   group_by(catch_year, age) %>% 
   summarise(avgresids = mean(resids)) %>% 
-  filter(age %in% c(1,2)) %>% 
+  filter(age %in% c(3,7,15)) %>% 
   ggplot(aes(x = as.factor(catch_year), y = avgresids, colour = as.factor(age), group = as.factor(age))) +
       geom_line() +
       geom_hline(yintercept = 0, lty = 2) +
@@ -440,7 +440,7 @@ fit_hake_df %>%
 dev.off()
 
 
-
+jpeg(file="plots/condition_variability_cohort.jpeg")
 fit_hake_df %>% 
   group_by(catch_year, cohort) %>% 
   summarise(avgresids = mean(resids), n = n()) %>% 
@@ -450,8 +450,9 @@ fit_hake_df %>%
   geom_hline(yintercept = 0, lty = 2) +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
-  labs(title = "Variability in growth anomalies through time", subtitle = "for ages 3, 7, and 15", x = "Year", y = "avg growth anomaly") +
-  scale_colour_manual(values = pal2)
+  labs(title = "Variability in weight-length anomalies through time", subtitle = "for cohort", x = "Year", y = "avg growth anomaly") #+
+  #scale_colour_manual(values = pal2)
+dev.off()
 
 
 
