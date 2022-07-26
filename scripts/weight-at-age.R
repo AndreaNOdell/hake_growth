@@ -2,6 +2,10 @@ library(tidyverse)
 library(brms)
 library(mgcv)
 library(ggpubr)
+library(performance)
+library(tidybayes)
+library(modelr)
+library(bayesplot)
 
 df = read.csv("raw_data/selection.csv") # load in data
 #colnames(df)
@@ -17,6 +21,7 @@ hake_df = df %>% # make new dataframe with relevant information only
 # Set missing catch_year values to the year inputed for the other date related columns
 hake_df[is.na(hake_df$catch_month),]$catch_year <- 2017
 
+# create plus group
 hake_df = hake_df %>% 
   mutate(new_age = age)
 hake_df$new_age = as.integer(lapply(hake_df$new_age, function(x) ifelse(x > 14, 15, x)))
@@ -66,6 +71,20 @@ gamm_GS_out = gam(weight ~ s(new_age, m = 2) +
                  s(new_age, catch_year, bs="fs", m = 2), 
                data = hake_weight_age_df, method="REML")
 
+gamm_year_out = gam(weight ~ s(new_age) + s(catch_year, bs="re"), 
+                  data = hake_weight_age_df, method="REML")
+gamm_year_cohort_out = gam(weight ~ s(new_age) + s(catch_year, bs="re")
+                           + s(cohort, bs="re"), data = hake_weight_age_df, method="REML")
+gamm_cohort_out = gam(weight ~ s(new_age) + s(cohort, bs="re"), data = hake_weight_age_df, method="REML")
+
+
+gamm_year_cohort_spatial_out = gam(weight ~ s(new_age) + s(catch_year, bs="re") 
+                                   + te(hb_longitude,hb_latitude,bs="tp")
+                                   + s(cohort, bs="re"), data = hake_weight_age_df, method="REML")
+
+gamm_trial_out = gamm(weight ~ s(new_age) + s(catch_year, bs="re")
+                           + s(new_age, cohort, bs="fs"), data = hake_weight_age_df, method="REML")
+
 # for cohorts
 # group level smoothers with different wiggliness
 gamm_cohort_out = gam(weight ~ s(new_age, bs="tp") +
@@ -93,6 +112,8 @@ hake_weight_age_df$gamm_GS.resids = residuals(gamm_GS_out, type = "deviance")
 hake_weight_age_df$gamm_cohort.resids = residuals(gamm_cohort_out, type = "deviance")
 hake_weight_age_df$gamm_GS_cohort.resids = residuals(gamm_GS_cohort_out, type = "deviance")
 hake_weight_age_df$gamm_GS_year_cohort.resids = residuals(gamm_GS_year_cohort_out, type = "deviance")
+hake_weight_age_df$gamm_year.resids = residuals(gamm_year_out, type = "deviance")
+hake_weight_age_df$gamm_year_cohort.resids = residuals(gamm_year_cohort_out, type = "deviance")
 
 
 
@@ -118,6 +139,8 @@ gamm_yr_GS_brm_out <- brm(bf(weight ~ s(new_age, m = 2) +
 ### Save dataframe with all resids
 #save(hake_weight_age_df, file = "results/hake_weight_age_df.RData")
 
+#AIC(gamm_GS_year_cohort_out, gamm_GS_cohort_out, gamm_cohort_out,gamm_out,gamm_GS_out)
+
 # explore resids -----------------------------------------------------
 
 
@@ -142,10 +165,10 @@ p1 = hake_weight_age_df %>%  #summarise residual information by year
   geom_point(aes(size = n)) +
   scale_size(range = c(1, 3)) +
   theme_classic() +
-  labs(title = 'average weight-at-age anomaly', subtitle = "cohort random effect with same wiggliness", x = 'year', y = 'residual') +
+  labs(title = 'average weight-at-age anomaly', subtitle = "cohort and year random effect with same wiggliness", x = 'year', y = 'residual') +
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
   geom_hline(yintercept = 0, linetype = 'dashed') +
-  lims(y = c(-0.008, 0.025))
+  lims(y = c(-0.001, 0.001))
 
 jpeg(file="plots/weight-at-age/avg_growth_anomaly_cohort_gams.jpeg")
 ggarrange(p1, p2, 
@@ -156,7 +179,7 @@ dev.off()
 jpeg(file="plots/weight-at-age/growth_anomaly_cohort_cohortRE.jpeg")
 hake_weight_age_df %>%  #summarise residual information by year
   group_by(catch_year, cohort) %>% 
-  summarise(avg = mean(gamm_cohort.resids), sd = sd( gamm_cohort.resids), n = n()) %>% 
+  summarise(avg = mean(gamm_GS_cohort.resids), sd = sd( gamm_GS_cohort.resids), n = n()) %>% 
   filter(cohort %in% c(1996, 1999, 2005, 2010, 2013)) %>% 
   ggplot(aes(x = catch_year, y = avg, colour = as.factor(cohort), group = as.factor(cohort))) +
   geom_line() +
@@ -165,4 +188,182 @@ hake_weight_age_df %>%  #summarise residual information by year
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
   labs(title = "Cohort weight-at-age anomalies through time", subtitle = "with cohort random effects", x = "Year", y = "avg growth anomaly")
 dev.off()
+
+
+# Condition factors -----------------------------
+
+# cohort and year random effect
+weight.age_year_cohort_gam_df = hake_weight_age_df %>% 
+  select(new_age, weight, catch_year, cohort, length, distance_fished, sex_description,
+         hb_latitude, hb_longitude, resids = gamm_GS_year_cohort.resids)
+weight.age_year_cohort_gam_df$predictions = predict(gamm_GS_year_cohort_out)
+weight.age_year_cohort_gam_df$cond.factor = weight.age_year_cohort_gam_df$weight/weight.age_year_cohort_gam_df$predictions
+
+weight.age_year_cohort_gam_df %>%  #summarise residual information by year
+  group_by(catch_year) %>% 
+  summarise(avg = mean(cond.factor), sd = sd(cond.factor), n = n()) %>% 
+  ggplot(aes(x = catch_year, y = avg)) +
+  geom_point(aes(size = n)) +
+  scale_size(range = c(1, 3)) +
+  theme_classic() +
+  labs(title = 'average condition factor (obs/pred)', subtitle = "cohort and year random effect with same wiggliness", x = 'year', y = 'avg condition factor') +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  geom_hline(yintercept = 1, linetype = 'dashed') 
+
+
+jpeg(file="plots/weight-at-age/anomaly_spatial_peryear.jpeg")
+# spatial variation
+ggplot(hake_weight_age_df, aes(x = hb_longitude, y = hb_latitude, col = gamm_GS_cohort.resids)) +
+  geom_point() +
+  scale_colour_gradient2(limits = c(-1.42, 2.95), mid = NA) +
+  theme_classic() +
+  facet_wrap(vars(catch_year)) +
+  scale_x_reverse()
+dev.off()
+# not too much visual differences between the three gam models (cohort, year, cohort + year)
+
+
+
+
+# Weight at age simple EDA  ----------------
+
+# Looking more at how residuals vary by other factors independently
+
+# by cohorts
+hake_weight_age_df %>% 
+  group_by(cohort) %>% 
+  summarise(avg = mean(gamm_GS_year_cohort.resids), n = n()) %>% 
+  ggplot(aes(x = cohort, y = avg)) +
+  geom_point() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = 'dashed') +
+  lims(y = c(-0.05, 0.05))
+
+# by latitude
+hake_weight_age_df %>% 
+  group_by(hb_latitude) %>% 
+  summarise(avg = mean(gamm_GS_year_cohort.resids), n = n()) %>% 
+  ggplot(aes(x = hb_latitude, y = avg)) +
+  geom_point() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = 'dashed') +
+  lims(y = c(-0.05, 0.05))
+
+# by sex
+# by latitude
+hake_weight_age_df %>% 
+  group_by(sex_description) %>% 
+  summarise(avg = mean(gamm_GS_year_cohort.resids), n = n()) %>% 
+  ggplot(aes(x = sex_description, y = avg)) +
+  geom_point() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  geom_hline(yintercept = 0, linetype = 'dashed') +
+  lims(y = c(-0.05, 0.05))
+
+
+
+
+# plot predictions ---------
+predict_data <- tidyr::expand(hake_weight_age_df, nesting(cohort, catch_year),
+                          new_age = unique(new_age))
+
+m1_pred <- bind_cols(predict_data,
+                     as.data.frame(predict(gamm_year_cohort_out, newdata = predict_data,
+                                           se.fit = TRUE)))
+
+ggplot(m1_pred, aes(x = new_age, y = fit, group = catch_year, color = catch_year)) +
+  geom_smooth(size = 0.1) +
+  facet_wrap(vars(cohort)) +
+  theme_classic()
+
+
+# brms - gams ------------
+# Now that I have a better understanding of gams, I will explore bayesian gams
+
+gamm_year_brm_out = brm(bf(weight ~ s(new_age) + s(catch_year, bs="re")), 
+                    data = hake_weight_age_df, family = gaussian(), cores = 4,
+                    iter = 2000, warmup = 1000, chains = 4)
+msms <- conditional_smooths(gamm_year_brm_out)
+plot(msms)
+#save(gamm_year_brm_out, file = "bayes_results/gamm_year_brm_out.RData")
+
+gamm_cohort_out = brm(bf(weight ~ s(new_age) + s(cohort, bs="re")), data = hake_weight_age_df, family = gaussian(), 
+                      cores = 4, iter = 2000, warmup = 1000, chains = 4)
+
+
+# This is the favored one
+gamm_year_cohort_out = brm(bf(weight ~ s(new_age) + s(catch_year, bs="re")
+                              + s(cohort, bs="re")), data = hake_weight_age_df, family = gaussian(), 
+                           cores = 4, iter = 2000, warmup = 1000, chains = 4)
+#save(gamm_year_cohort_out, file = "bayes_results/gamm_year_cohort_out.RData")
+msms <- conditional_smooths(gamm_year_cohort_out)
+plot(msms)
+
+get_variables(gamm_year_cohort_out)
+
+post_ranef <- posterior_samples(gamm_year_cohort_out, add_chain = T) %>% 
+  dplyr::select(-lp__, -iter, -contains("b_"), -contains("sds_"))
+
+mcmc_trace(post_ranef) # traceplots
+
+rhat_vals <- rhat(gamm_year_cohort_out) #Rhat
+mcmc_rhat_data(rhat_vals)
+mcmc_rhat(rhat_vals) + theme_bw()
+
+neff_vals <- neff_ratio(gamm_year_cohort_out) # NEFF
+mcmc_neff_data(neff_vals)
+mcmc_neff(neff_vals)  + theme_bw()
+
+mcmc_acf(posterior_samples(gamm_year_cohort_out)) # autocorrelation
+
+
+# Visualize random effect predictions
+re_model_only <- tidyr::crossing(new_age = seq(min(hake_weight_age_df$new_age), 
+                                        max(hake_weight_age_df$new_age), length.out=100),
+                          catch_year = unique(hake_weight_age_df$catch_year),
+                          cohort = unique(hake_weight_age_df$cohort)) %>%
+        add_epred_draws(gamm_year_cohort_out, ndraws = 1e3)
+
+re_model_summary <- re_model_only %>%
+  group_by(catch_year, new_age) %>%
+  summarize(.epred = mean(.epred))
+
+jpeg(file="plots/weight-at-age/bayesian/predicted_weight_per_year.jpeg")
+ggplot(re_model_only,
+       aes(x = new_age, y = .epred)) +
+  facet_wrap(~catch_year) +
+  stat_interval() +
+  theme_classic()
+dev.off()
+
+ggplot(re_model_only,
+       aes(x = new_age, y = .epred)) +
+  geom_line(aes(group = .draw), alpha = 0.1) +
+  geom_line(data = re_model_summary, alpha = 0.8, 
+            color = "red", lwd = 1) +
+  facet_wrap(~catch_year)
+
+
+# simple data exploration of weight at age trends (no modeling) -----
+# following what pollock assessments did
+
+avg_weight_at_age = hake_weight_age_df %>% 
+  group_by(new_age) %>% 
+  summarise(avg_weight = mean(weight))
+as.data.frame(avg_weight_at_age)
+
+hake_weight_age_df = left_join(hake_weight_age_df, avg_weight_at_age, by = "new_age")
+hake_weight_age_df$std_weight_dev = hake_weight_age_df$weight/hake_weight_age_df$avg_weight
+as.factor(hake_weight_age_df$new_age)
+
+ggplot(hake_weight_age_df, aes(x = new_age, y = std_weight_dev, group = new_age)) +
+  geom_violin() + 
+  stat_summary(fun.data=data_summary) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  geom_hline(yintercept = 1, lty = 2) +
+  facet_wrap(vars(catch_year))
 
