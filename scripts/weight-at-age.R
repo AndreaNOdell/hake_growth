@@ -11,12 +11,12 @@ df = read.csv("raw_data/selection.csv") # load in data
 #colnames(df)
 
 hake_df = df %>% # make new dataframe with relevant information only
-  filter(scientific_name == "Merluccius productus") %>% 
-  select("age", "avg_weight", "distance_fished", #"hb_date", 
+  dplyr::filter(scientific_name == "Merluccius productus") %>% 
+  dplyr::select("age", "avg_weight", "distance_fished", #"hb_date", 
          "length", "sex_description", "weight", "catch_modified_date",
          "eq_date", "hb_date", 'hb_latitude', 'hb_longitude') %>% 
-  separate(col = eq_date , into = c('date', 'time'), sep = " ", remove = FALSE) %>% 
-  separate(col = date, into = c("catch_year", "catch_month", 'catch_day'), sep = "-")
+  tidyr::separate(col = eq_date , into = c('date', 'time'), sep = " ", remove = FALSE) %>% 
+  tidyr::separate(col = date, into = c("catch_year", "catch_month", 'catch_day'), sep = "-")
 
 # Set missing catch_year values to the year inputed for the other date related columns
 hake_df[is.na(hake_df$catch_month),]$catch_year <- 2017
@@ -34,8 +34,8 @@ ggplot(hake_df, aes(x = new_age, y = weight)) +
 
 # Create a dataframe with age and weight, complete cases only
 hake_weight_age_df = hake_df %>% 
-  select(new_age, weight, catch_year, cohort, length, distance_fished, sex_description, hb_latitude, hb_longitude) %>% 
-  drop_na() 
+  dplyr::select(new_age, weight, catch_year, cohort, length, distance_fished, sex_description, hb_latitude, hb_longitude) %>% 
+  tidyr::drop_na() 
 
 intercept_only_brms_out <- brm(bf(weight ~ 1 + (1 | new_age)),
               data = hake_weight_age_df,                               
@@ -283,20 +283,27 @@ ggplot(m1_pred, aes(x = new_age, y = fit, group = catch_year, color = catch_year
 # brms - gams ------------
 # Now that I have a better understanding of gams, I will explore bayesian gams
 
+gamm_brm_out = brm(bf(weight ~ s(new_age)), 
+                        data = hake_weight_age_df, family = lognormal(), cores = 4,
+                        iter = 2000, warmup = 1000, chains = 4)
+#save(gamm_brm_out, file = "bayes_results/gamm_brm_out.RData")
+
+
+
 gamm_year_brm_out = brm(bf(weight ~ s(new_age) + s(catch_year, bs="re")), 
-                    data = hake_weight_age_df, family = gaussian(), cores = 4,
+                    data = hake_weight_age_df, family = lognormal(), cores = 4,
                     iter = 2000, warmup = 1000, chains = 4)
-msms <- conditional_smooths(gamm_year_brm_out)
-plot(msms)
-#save(gamm_year_brm_out, file = "bayes_results/gamm_year_brm_out.RData")
+#msms <- conditional_smooths(gamm_year_brm_out)
+#plot(msms)
+save(gamm_year_brm_out, file = "bayes_results/gamm_year_brm_out.RData")
 
-gamm_cohort_out = brm(bf(weight ~ s(new_age) + s(cohort, bs="re")), data = hake_weight_age_df, family = gaussian(), 
-                      cores = 4, iter = 2000, warmup = 1000, chains = 4)
-
+gamm_cohort_brm_out = brm(bf(weight ~ s(new_age) + s(cohort, bs="re")), data = hake_weight_age_df, 
+                          family = lognormal(), cores = 4, iter = 2000, warmup = 1000, chains = 4)
+#save(gamm_cohort_brm_out, file = "bayes_results/gamm_cohort_brm_out.RData")
 
 # This is the favored one
 gamm_year_cohort_out = brm(bf(weight ~ s(new_age) + s(catch_year, bs="re")
-                              + s(cohort, bs="re")), data = hake_weight_age_df, family = gaussian(), 
+                              + s(cohort, bs="re")), data = hake_weight_age_df, family = lognormal(), 
                            cores = 4, iter = 2000, warmup = 1000, chains = 4)
 #save(gamm_year_cohort_out, file = "bayes_results/gamm_year_cohort_out.RData")
 msms <- conditional_smooths(gamm_year_cohort_out)
@@ -329,7 +336,21 @@ re_model_only <- tidyr::crossing(new_age = seq(min(hake_weight_age_df$new_age),
 
 re_model_summary <- re_model_only %>%
   group_by(catch_year, new_age) %>%
-  summarize(.epred = mean(.epred))
+  dplyr::summarize(.epred = mean(.epred))
+
+all_pred <- tidyr::crossing(new_age = seq(min(hake_weight_age_df$new_age), 
+                                 max(hake_weight_age_df$new_age), length.out=100),
+                   catch_year = unique(hake_weight_age_df$catch_year),
+                   cohort = unique(hake_weight_age_df$cohort)) %>%
+  add_predicted_draws(gamm_year_cohort_out,
+                      allow_new_levels = TRUE,
+                      ndraws = 1e3)
+
+pp_check(gamm_year_cohort_out, ndraws = 1e2) + 
+  ggtitle("PPC gamm with year+cohort RE") + 
+  theme_bw(base_size = 10) +
+  xlim(-1, 3)
+
 
 jpeg(file="plots/weight-at-age/bayesian/predicted_weight_per_year.jpeg")
 ggplot(re_model_only,
@@ -366,4 +387,18 @@ ggplot(hake_weight_age_df, aes(x = new_age, y = std_weight_dev, group = new_age)
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
   geom_hline(yintercept = 1, lty = 2) +
   facet_wrap(vars(catch_year))
+
+
+
+# To compare models
+
+loo(gamm_year_cohort_out, gamm_year_brm_out, gamm_cohort_brm_out)
+
+
+
+# let's figure out what the peaks are
+ggplot(hake_weight_age_df, aes(x = weight, group = as.factor(cohort), fill = as.factor(cohort))) +
+  geom_histogram(bins = 60) +
+  theme_classic() +
+  scale_fill_discrete(limits = c(0,1,2,3,4,5,6,7))
 
