@@ -99,7 +99,22 @@ Notes from meeting with Kristin 7/7/22
 
 ### July 11-15, 2022
 
--   Meeting with Kelli Johnson (7/14/22) on weight at age
+How do weight-length anomalies vary through time for a specific age? 
+
+![](plots/growth_variability_3.7.15.jpeg)
+
+
+It looks like fish condition for a younger ages vary much more stochastically compared to the plus group age that has much more low-frequency fluctuations. Potentially because they aren't growing quite as much at this age? Or lag effect with younger ages moving into this plus group?
+
+
+And similarly, looking at how cohort condition varies through time
+
+![](plots/condition_variability_cohort.jpeg)
+
+Doesn't look like there aren't too many patterns between cohorts.
+
+
+-   **Meeting with Kelli Johnson (7/14/22) on weight at age**
     -   weighting process
         -   summarizes the data and then use that to weight things
         -   assumes all fish of the same age have the same weight
@@ -125,7 +140,9 @@ Notes from meeting with Kristin 7/7/22
         -   Sablefish also has a lot of data to test on
         -   visualize weight at age over the raw data to see if there are strong cohorts coming through
         -   Line 157 in github code - beginning of where they fill in missing values
--   Meeting with Kristin
+        
+        
+-   **Meeting with Kristin**
     -   random effects
         -   year
         -   cohort
@@ -190,11 +207,64 @@ gamm_GS_cohort_out = gam(weight ~ s(new_age, m = 2) +
 ![](plots/weight-at-age/avg_growth_anomaly_cohort_gams.jpeg)
 
 
+### July 18-22, 2022
+
+
 Of all 5 models, `gamm_GS_cohort_out` had the smallest AIC value. 
 
 - Notes on weight-length and weight-at-age and how they may relate   
     - weight-length relationships are indicative of "body condition"
     - weight-at-age is a rate, so potentially indicative of growth rate
 
+
+6.  GAM with group-level smoothers with same wiggliness for cohort and year
+
+```{r, eval = FALSE}
+gamm_GS_year_cohort_out = gam(weight ~ s(new_age, m = 2) +
+                           s(new_age, cohort, bs="fs", m = 2) +
+                           s(new_age, catch_year, bs="fs", m = 2) , 
+                         data = hake_weight_age_df, method="REML")
+```
+
+![](plots/weight-at-age/avg_growth_anomaly_cohort_year_gams.jpeg)
+
+
+![](plots/weight-at-age/anomaly_spatial_peryear.jpeg){width=75%}
+
+Looking at how weight-at-age anomalies vary spatially by year, there seems to be a lot more within year, spatial variation compared to between years. This is in stark contrast from visualising the length-weight relationship. This plot only shows for the gam model with cohort RE and same wiggliness (model 5). However, there were no visual differences between the other models that I tried (model 3 and 6).
+
+
+
+
+Okay, I need a recap:
+
+- weight-length relationship
+    - greater year-to-year spatial variation
+    - plus group has lower freq variability through time vs younger ages are much more stochastic
+    - No clear pattern between cohorts when looking at weight-length variability through time 
+- weight-at-age
+    - greater within-year spatial variation
+    - Different temporal trends in average growth anomaly depending on model used
+    
+    
+Meeting with Kristin
+
+- gams
+    - don't put smoothers on random effect
+- year-to-year effects are better explained because the residuals are smaller
+- write down hypothesis about how weight-at-age should vary with cohorts or years
+    - different curve for each cohort
+- LOOIC instead of AIC (look at Michael Malick papers 2020)
+- Think about what I want to get out of the internship and make sure we're accomplishing that
+
+
+**Potential questions of interest**
+- Explore spatio-temporal patterns in growth of Pacific Hake
+- Identify potential covariates of growth trends and develop an environmental index
+- Quantify the performance of incorporating an environmental index on growth
+
+
+
+- where can I get recruitment and biomass information?
 
 
