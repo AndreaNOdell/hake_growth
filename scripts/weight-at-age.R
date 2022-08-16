@@ -6,6 +6,7 @@ library(performance)
 library(tidybayes)
 library(modelr)
 library(bayesplot)
+library(gratia)
 
 df = read.csv("raw_data/selection.csv") # load in data
 #colnames(df)
@@ -34,8 +35,10 @@ ggplot(hake_df, aes(x = new_age, y = weight)) +
 
 # Create a dataframe with age and weight, complete cases only
 hake_weight_age_df = hake_df %>% 
-  dplyr::select(new_age, weight, catch_year, cohort, length, distance_fished, sex_description, hb_latitude, hb_longitude) %>% 
-  tidyr::drop_na() 
+  dplyr::select(new_age, weight, catch_year, catch_month, catch_day, cohort, length, distance_fished, sex_description, hb_latitude, hb_longitude) %>% 
+  tidyr::drop_na()
+hake_weight_age_df$catch_month = as.numeric(hake_weight_age_df$catch_month)
+hake_weight_age_df$catch_day = as.numeric(hake_weight_age_df$catch_day)
 
 intercept_only_brms_out <- brm(bf(weight ~ 1 + (1 | new_age)),
               data = hake_weight_age_df,                               
@@ -301,12 +304,13 @@ gamm_cohort_brm_out = brm(bf(weight ~ s(new_age) + s(cohort, bs="re")), data = h
                           family = lognormal(), cores = 4, iter = 2000, warmup = 1000, chains = 4)
 #save(gamm_cohort_brm_out, file = "bayes_results/gamm_cohort_brm_out.RData")
 
+
 # This is the favored one
 gamm_year_cohort_out = brm(bf(weight ~ s(new_age) + s(catch_year, bs="re")
                               + s(cohort, bs="re")), data = hake_weight_age_df, family = lognormal(), 
                            cores = 4, iter = 2000, warmup = 1000, chains = 4)
 #save(gamm_year_cohort_out, file = "bayes_results/gamm_year_cohort_out.RData")
-msms <- conditional_smooths(gamm_year_cohort_out)
+msms <- conditional_smooths(gamm_cohort_brm_out)
 plot(msms)
 
 get_variables(gamm_year_cohort_out)
@@ -401,4 +405,43 @@ ggplot(hake_weight_age_df, aes(x = weight, group = as.factor(cohort), fill = as.
   geom_histogram(bins = 60) +
   theme_classic() +
   scale_fill_discrete(limits = c(0,1,2,3,4,5,6,7))
+
+
+# testing different distributions using mgcv
+
+gamm_cohort_gamma_out = gam(weight ~ s(new_age) + s(cohort), data = hake_weight_age_df, 
+                            family = Gamma())
+gamm_cohort_lnorm_out = gam(weight ~ s(new_age) + s(cohort, bs="re"), data = hake_weight_age_df, 
+                            family = gaussian(link = "log"))
+
+
+gamm_cohort_year_gamma_out = gam(weight ~ s(new_age, k = 12) + s(catch_year, bs="re") + s(cohort, k = 20), data = hake_weight_age_df, 
+                            family = Gamma())
+gamm_cohort_year_lnorm_out = gam(weight ~ s(new_age, k = 12) + s(catch_year, bs="re") + s(cohort, k = 17), data = hake_weight_age_df, 
+                            family = gaussian(link = "log"))
+
+gamm_cohort_year_space_lnorm_out = gam(weight ~ s(new_age, k = 10) + s(catch_year, bs="re") + s(cohort, k = 18) +
+                                   s(hb_latitude, k = 20), data = hake_weight_age_df, 
+                                 family = gaussian(link = "log"))
+
+rsd = residuals(gamm_cohort_year_space_lnorm_out)
+prd = predict(gamm_cohort_year_space_lnorm_out)
+hake_weight_age_df = hake_weight_age_df %>% 
+  mutate(resids = rsd, preds = exp(prd))
+
+ggplot(hake_weight_age_df, aes(x = weight, y = resids)) +
+  geom_point() +
+  facet_wrap(vars(new_age))
+
+
+
+# Let's check correlations....
+hake_corr_check = hake_weight_age_df %>% 
+  select(catch_month, catch_day, length, distance_fished, hb_latitude, hb_longitude, catch_year, cohort)
+hake_corr_check$cohort = as.numeric(hake_corr_check$cohort)
+hake_corr_check$catch_year = as.numeric(hake_corr_check$catch_year)
+cor(hake_corr_check)
+
+
+
 
