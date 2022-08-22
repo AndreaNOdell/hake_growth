@@ -258,13 +258,268 @@ Meeting with Kristin
 - Think about what I want to get out of the internship and make sure we're accomplishing that
 
 
-**Potential questions of interest**
-- Explore spatio-temporal patterns in growth of Pacific Hake
-- Identify potential covariates of growth trends and develop an environmental index
-- Quantify the performance of incorporating an environmental index on growth
+
+### July 25-29, 2022
+
+
+**Potential questions of interest**  
+- Explore spatio-temporal patterns in growth of Pacific Hake  
+- Identify potential covariates of growth trends and develop an environmental index  
+- Quantify the performance of incorporating an environmental index on growth  
+- Separately, test importance/sensitivity of SS of filling in missing weight-at-age information assuming average vs environmentally driven weight-at-age   
+- Incorporate into the MSE?  
+
+**Goals for the rest of the summer**  
+- Solidify motivation and guiding questions  
+- Identify promising methods/approaches  
+- Begin writing  
+
+
+This week I did more work on the gam modeling and now have a better grasp on what I am modeling. Last week, the models I was fitting were gam models with "random wiggliness" where each cohort and year had their own wiggliness/spline action. However, we are more interested in random effects where there is just a shift in the position of the curve (intercept?), but the shape remains the same. With that in mind, I realized we could still use the smoothing function (because smoothing process also involves shrinkage and has a direct link to the shrinkage involved in random effects) and specify `bs = 're'`.
+
+I just tested a Bayesian GAMM with year and year+cohort random effects.
+
+1. Bayesian GAMM with only year RE
+
+```{r, eval = FALSE}
+gamm_year_brm_out = brm(bf(weight ~ s(new_age) + s(catch_year, bs="re")), 
+                    data = hake_weight_age_df, family = gaussian(), cores = 4,
+                    iter = 2000, warmup = 1000, chains = 4)
+```
+
+2. Bayesian GAMM with year and cohort RE
+
+```{r, eval = FALSE}
+gamm_year_cohort_out = brm(bf(weight ~ s(new_age) + s(catch_year, bs="re")
+                              + s(cohort, bs="re")), data = hake_weight_age_df, family = gaussian(), 
+                           cores = 4, iter = 2000, warmup = 1000, chains = 4)
+```
+
+Model comparisons:
+                     elpd_diff se_diff
+gamm_year_cohort_out     0.0       0.0
+gamm_year_brm_out    -1632.4     110.9
+
+
+Because the model with year + cohort RE was a better fit to the data, I continue on only looking at that model
+
+
+![](plots/weight-at-age/bayesian/diagnostics_plot.jpeg) ![](plots/weight-at-age/bayesian/diagnostics_plot_2.jpeg)
+
+Density and traceplots look good - got the hairy caterpillars
+
+However, the posterior predictive check doesn't look quite as good. This plot shows the observed data (in dark blue) and simulations from the joint posterior predictive distributions (in light blue). The replicated data should align with the observed data, unless there is model misfit or by chance. I used a gaussian distribution, however there is a bit of a right skew and potentially a lognormal or gamma distribution might be a better fit. I really have no clue what might be causing the multi-modes though... thoughts?
+
+
+Either way, the next few plots will be summaries of the coefficients.
+
+![](plots/weight-at-age/bayesian/gamm_cohort_year_fit.jpeg)
+
+![](plots/weight-at-age/bayesian/year_RE.jpeg)
+
+![](plots/weight-at-age/bayesian/cohort_RE.jpeg)
+
+I am still trying to figure out how to graph these myself so that I can customize the graphs, but for now these will do..
+
+Very clear year and cohort effects, some with credible intervals not passing over 0. Does that mean something like how it means in confidence intervals?
+
+
+**Questions**  
+
+- How to best explore "year" and "cohort" effects - is just specifying random effects okay?  
+    - are these effects important and how important are they relative to each other?
+        - have a model for each (no RE, just cohort, just year, both)
+        - look at sd for year vs cohort. which has more variability
+- where can I get recruitment and biomass information?  
+
+
+**Questions for presentation in hake meeting**   
+
+- potential environmental covariates to explore linked to growth? What is available?  
+- spatio-temporal methods?  
+    - sdm-TMB  
+    - gam with smoothers on lat,long  
+- thoughts on length-weight vs weight at age?  
+- Other assessments that use environmental indicators/indices that I can gain inspiration from?
+- proposed research questions
+
+
+**Meeting with Kristin**  ]
+
+- what makes weight at age different from recruitment? there is no real way to put an environmental driver into stock assessment since it is empirical
+    - rather, explore how incorporating an environmental driver affects the matrix of weight at age that does go into the assessment
+    - MSE: historical period using same empirical weight at age as estimation model, future assumes average weight at age (not a good assumption)
+- Fix assumed distribution in brms (lognormal/gamma)
+- does spatial matter? If not, then we can lump data together with fishery data and get a longer time series
+    - dig into smaller time-scale 
+- Next steps
+    - model comparison
+        - add smoother on lat,long (start simple model with just weight at age no RE)
+    - identifying potential covariates 
+        - temperature, upwelling, decadal?
+- recruitment and biomass information
+    - pacific hake mse github - assessment repository
+    - include as a potential driver
+
+
+### Aug 1-5, 2022
+
+**Notes from presentation**  
+
+- Kelli: cohort effect of ageing error  
+    - strong cohorts have more ageing error
+        - can lead to unequal smoothing 
+        - smoother would be smoothing out ageing error?
+        - in stock synthesis, treat strong cohorts differently
+    - maybe add a cohort efect for large cohorts
+    - Kiva doesn't think it's that important (error in variables)
+    - Even if I don't include it in the model immediately, it could be a way to explain some of the results
+- For gamm with year and cohort random effect, there was agreement on the presence of autocorrelation in the cohort random effect  
+    - perhaps above average weight at age carrying through
+- In terms of temporal trends, previous surveys were a different temporal window. If we could show that there are no differences in short timescale, then that's also good to know  
+- sdm-TMB - run all the models with and without spatial effects - get started on this (after looking into modes - next point)  
+- Figure out what those modes are in the observed weight data (pp_check) - are they ages 1,2, and 3?  
+- Motivations for population dynamics fellowship
+    - Lay the groundwork for what we might build into a forecast (so instead of interpolating, we can extrapolate)
+    - They want to include an internally estimate weight at age into FIMS, and so this work can directly inform how they do that
+    
+
+Fixed the distribution from gaussian to lognormal and re-ran the 4 models in brms. 
+1. Just age as a predictor  
+2. age with catch_year random effect  
+3. age with cohort random effect  
+4. age with both catch_year and cohort random effect
+
+The posterior predictive check is much better when using the lognormal distribution, but there seems to be some bias in predictions as shown by the offset peaks.
+
+![](plots/weight-at-age/bayesian/pp_check_cohort.jpeg)
+
+So, what are those peaks? Through some simple visualisation, it looks like the peaks are associated with ages as opposed to cohorts. The first peak is the age 1 individuals, the second peak is ages 2 and 3, and the third peak is a compilation of the rest of the ages. 
+    
+
+![](plots/multi-mode.jpeg)![](plots/multi-modal_cohort.jpeg)
+
+Now I am on a quest to minimize the bias! 
+
+I am instead running more gams in mgcv since that has been much faster. In terms of the bias in the posterior predictive check, I originally thought a gamma distribution might be a better fit than the lognormal, but that doesn't seem to be the case when I looked at the outputs and GCV which is a leave one out cross-validation that acts similarly to the AIC. So, I continue to use a lognormal (or at least in the gam case, I am using a gaussian with log link - which hopefully is fine... couldn't find the lognormal distribution option in mgcv)
+
+
+I also included a smoother on latitude to hopefully capture some of the residuals in the larger fish. Below is a plot of the partial effects for the gam with catch_year random effects, s(cohort), and s(latitude) and you can see the new_age is still underpredicting for those older ages
+
+![](plots/weight-at-age/gam_cohort_year_space_lnorm_check.jpeg)
+
+I also learned about new diagnostic checks using `gam.check` to determine if the number of knots is too low (predictors with k > 1 or a significant p-value)
+
+
+### Aug 8-13, 2022
+
+Following the gams fit last week and the significance of at least a smoother on latitude, I am making the switch to sdm-TMB and going to start figuring out how to use it.
+
+- check correlation structure
+
+Notes on coordinate system for sdmTMB
+
+- have to convert from LatLong to UTM which minimizes distortion and has attributes that make estimating distances easy and more accurate.  
+- Pacific Northwest is UTM zone 10 (EPSG: 32610)
+
+**I was on vacation from Thursday - Monday**
+
+
+### Aug 16 - 19
+
+The first thing I did was check correlation structure among key predictors from the data frame which included catch month, catch day, length, distance fished, latitude, longitude, catch year and cohort. Using the `cor()` function, there were a few correlations > 0.7.
+
+- latitude x catch month = 0.80  
+- latitude x longitude = 0.85  
+- cohort x catch year = 0.94 
+
+![](plots/corr_structure.png)
+
+
+*Big picture thinking*
+
+
+1. What are the local and regional trends in weight at age of Pacific Hake
+2. Which covariates explain these changes and in what direction do they covary?  
+3. How strong are the latent spatial and spatiotemporal random effects? (maybe don't explicitly say this, but good to include in results)  
+4. To what extent does incorporating growth variation into the interpolation of missing data within the stock assessment affect the estimationg of management reference points?
+
+
+Things to remember 
+
+- the data that I have is limited to the months of June - September when the acoustic trawl survey is sampling.
+
+
+Variability can be partitioned into 4 ways (larsen et al 2001 - Designs for evaluating local and regional scale trends):  
+
+
+- Spatial: areas with increased condition in all years    
+- Temporal: changes throughout the populations range in a given year     
+- Spatiotemporal: areas with increased condition in a particular year  
+- Individual: residual variation in condition for each individual  
+
+
+*Covariates to consider*
+
+
+- Temperature (at depth? SST?), PDO, ENSO (abiotic)  
+- Main food source (Euphasiid) or predator or competition from strong year classes (biotic)  
+- total catch? (fishing)  
+
+*Questions for meeting with Kristin*  
+
+
+- Do I need to standardize the data according to the CPUE? Saw this in the body condition sdmTMB paper - might just be for density model  
+- Were there any changes in the net used for the acoustic-trawl survey that might influence the size of the fish being caught? Vessel-specific variation from year to year as well...  
+- Should we start to look into obtaining environmental data?  
+    -biomass at age for strong year classes
+
+
+*Explorations with sdmTMB*
+
+I am getting the hang of it. I started off with a very simple, non-spatial model where weight is predicted by age and cohort, with age and cohort as have a smoothing function. Then I turned on spatial, then the spatiotemporal random effect with an AR1 process. I tested two spatiotemporal models
+
+m2: weight ~ s(age) + s(cohort) 
+
+![](plots/sdmTMB/m2.png)
+![](plots/sdmTMB/spatiotemp_resids_AR1.jpeg)
+
+m3: weight ~ s(age) + s(cohort) + catch_month
+
+![](plots/sdmTMB/m3.png)
+![](plots/sdmTMB/spatiotemp_resids_m3.jpeg)
+
+
+Catch month and latitude have a correlation of 0.8. Is it fine to still include if latitude is not considered a predictor, but rather a spatial random effect?
+
+
+In terms of autocorrelation, I realize I never really looked at the time series of weight for each age to see if there are any long term declines or where the variability is most prominent.
+
+![](plots/weight_by_age_timeseries.jpeg)
+
+
+There also seems to be some differences when we split the data between north and south at the median point. UTC 4957.963
+
+![](plots/weight_by_age_by_area_timeseries.jpeg)
+
+
+There is much greater variability in the older age classes of the south. Moreover, there may be a slightly increasing trend in the north.
+
+Definitely worth looking at a longer time series of this - where is the fishery data again? 
 
 
 
-- where can I get recruitment and biomass information?
+Now looking at the outputs of m3
+
+![](plots/sdmTMB/predictions_m3.jpeg)
+![](plots/sdmTMB/spatial_RE_m3.jpeg)
+![](plots/sdmTMB/spatiotemporal_RE_m3.jpeg)
 
 
+
+Next week:  
+
+
+- time varying intercept model and compare to gams  
+- add a smoother on catch_year  
+- biomass of cohort in that year rather than cohort
