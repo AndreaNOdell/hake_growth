@@ -39,6 +39,8 @@ hake_weight_age_df = hake_df %>%
   tidyr::drop_na()
 hake_weight_age_df$catch_month = as.numeric(hake_weight_age_df$catch_month)
 hake_weight_age_df$catch_day = as.numeric(hake_weight_age_df$catch_day)
+#save(hake_weight_age_df, file = "results/hake_weight_age_df.RData")
+
 
 intercept_only_brms_out <- brm(bf(weight ~ 1 + (1 | new_age)),
               data = hake_weight_age_df,                               
