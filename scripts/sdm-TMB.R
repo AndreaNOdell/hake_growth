@@ -9,7 +9,7 @@ library(sdmTMB)
 
 # create spatial dataframe
 hake_sdmTMB_df = hake_weight_age_df %>% 
-  select(new_age, weight, catch_year, catch_month, cohort, length, distance_fished, sex_description,
+  dplyr::select(new_age, weight, catch_year, catch_month, cohort, length, distance_fished, sex_description,
          hb_longitude, hb_latitude) 
 hake_sdmTMB_df$hb_longitude = -1 * hake_sdmTMB_df$hb_longitude
 hake_sdmTMB_df = st_as_sf(hake_sdmTMB_df, coords = c("hb_longitude", "hb_latitude"))
@@ -20,7 +20,7 @@ coords = coords/1000
 hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords))
 
 # create mesh
-mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 1)
+mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 10)
 plot(mesh)
 # ggplot() +
 #   inlabru::gg(mesh$mesh) +
@@ -29,7 +29,8 @@ plot(mesh)
 
 
 # try diff models
-hake_sdmTMB_df$cohort = as.numeric(hake_sdmTMB_df$cohort)
+hake_sdmTMB_df$cohort = as.integer(as.character(hake_sdmTMB_df$cohort))
+hake_sdmTMB_df$catch_year = as.integer(as.character(hake_sdmTMB_df$catch_year))
 
 m1 <- sdmTMB(
   data = hake_sdmTMB_df,
@@ -61,23 +62,82 @@ m3 <- sdmTMB(
 )
 #save(m3, file = "results/sdmTMB/m3.RData")
 
-# model diagnostics
-tidy(m3, "ran_pars", conf.int = TRUE)
-hake_sdmTMB_df$resids_m3 <- residuals(m3)# randomized quantile residuals
-hake_sdmTMB_df$predict_m3 = predict(m3)
-#qqnorm(hake_sdmTMB_df$resids)
-#qqline(hake_sdmTMB_df$resids)
+m4 <- sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + catch_month,
+  time_varying = ~ 1,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+)
 
-#jpeg(file="plots/sdmTMB/spatiotemporal_RE_m3.jpeg")
-ggplot(hake_sdmTMB_df, aes(X, Y, col = predict_m3$epsilon_st)) +
+m5 <- sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + catch_month + s(catch_year),
+  time_varying = ~ 1,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+)
+
+hake_sdmTMB_df$catch_year = as.factor(hake_sdmTMB_df$catch_year)
+m6 <- sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age, by = catch_year)  + s(cohort) + catch_month,
+  time_varying = ~ 1,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+)
+
+m7 <- sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age, by = catch_year) + catch_month,
+  time_varying = ~ 1,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+)
+
+m8 <- sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ new_age,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on"
+)
+
+
+
+# model diagnostics
+tidy(m8, "ran_pars", conf.int = TRUE)
+hake_sdmTMB_df$resids_m8_simple <- residuals(m8) # randomized quantile residuals
+predict_m8 = predict(m8)
+#set.seed(1)
+#rq_res <- residuals(m8) # randomized quantile residuals
+#qqnorm(rq_res);qqline(rq_res)
+
+#jpeg(file="plots/sdmTMB/residuals_m8_simple.jpeg")
+ggplot(hake_sdmTMB_df, aes(X, Y, col = resids_m8_simple)) +
   scale_colour_gradient2() +
   geom_point() +
   facet_wrap(~catch_year) +
   coord_fixed() +
-  labs(title= "spatiotemporal random effects")
+  labs(title= "weight ~ new_age as spatial model") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
 #dev.off()
 
 
+est <- as.list(m5$sd_report, "Est")
+plot(est$b_rw_t)
 
 
 
@@ -116,13 +176,107 @@ p2 = hake_sdm_south %>%
 
 ggarrange(p1,p2,labels = c("A", "B"), common.legend = TRUE, legend = "right")
 
-
+#jpeg(file="plots/weight-at-age/weight_at_age_by_year_north.jpeg")
 hake_sdmTMB_df %>% 
-  group_by(cohort, catch_year) %>% 
-  summarise(avg_weight = mean(weight)) %>% 
-  ggplot(aes(x = catch_year, y = avg_weight, group = as.factor(cohort), col = as.factor(cohort))) +
+  filter( Y < 4957.963) %>% 
+  group_by(new_age, catch_year) %>% 
+  summarise(avg_weight = mean(weight), n =n()) %>% 
+  ggplot(aes(x = new_age, y = avg_weight, group = as.factor(catch_year), col = as.factor(catch_year))) +
   geom_line() +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1))
+#dev.off()
+
+#jpeg(file="plots/weight-at-age/observations_of_age_by_month.jpeg")
+hake_sdmTMB_df %>% 
+  group_by(catch_month, new_age) %>% 
+  summarise(avg_weight = mean(weight), n = n()) %>% 
+  ggplot(aes(x = catch_month, y = n, group = as.factor(new_age), fill = as.factor(new_age))) +
+  geom_col() +
+  theme_classic() 
+#dev.off()
+
+
+
+
+# continuation of models
+hake_sdmTMB_df$catch_month = as.factor(hake_sdmTMB_df$catch_month)
+hake_sdmTMB_df$catch_year = as.factor(hake_sdmTMB_df$catch_year)
+hake_sdmTMB_df$cohort = as.numeric(as.character(hake_sdmTMB_df$cohort))
+
+m4.spatiotemporal = sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + (1 | catch_month) + (1 | catch_year),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+)
+#save(m4.spatiotemporal, file = "results/sdmTMB/m4.spatiotemporal.RData")
+
+m4.spatial.only = sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + (1 | catch_month) + (1 | catch_year),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on"
+)
+
+m4.no.spatiotemp = sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 +  s(new_age) + s(cohort) + (1 | catch_month) + (1 | catch_year),
+  family = lognormal(link = "log"),
+  spatial = "off"
+)
+
+coefficients_m4_spatiotemporal = tidy(m4.spatiotemporal, "ran_pars", conf.int = TRUE)
+hake_sdmTMB_df$resids_m4spatiotemporal <- residuals(m4.spatiotemporal) # randomized quantile residuals
+predict_m4.spatiotemporal = predict(m4.spatiotemporal)
+#save(predict_m4.spatiotemporal, file = "results/sdmTMB/predict_m4.spatiotemporal.RData")
+
+coefficients_m4_spatiotemporal %>% 
+  filter(!term %in% "range") %>% 
+ggplot(aes( x = estimate, y = term)) +
+  geom_point() +
+  theme_classic() +
+  lims( x = c(-0.25, 1)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey")
+
+# check residuals
+rq_res <- residuals(m4.spatiotemporal)
+rq_res <- rq_res[is.finite(rq_res)] # some Inf
+qqnorm(rq_res);qqline(rq_res)
+
+mcmc_res <- residuals(m4.spatiotemporal, type = "mle-mcmc", mcmc_iter = 201, mcmc_warmup = 200) 
+qqnorm(mcmc_res);qqline(mcmc_res)
+
+
+ggplot(predict_m4.spatiotemporal, aes(X, Y, col = omega_s)) +
+  scale_colour_gradient2() +
+  geom_point() +
+  facet_wrap(~catch_year) +
+  coord_fixed() +
+  labs(title= "m4 spatiotemporal") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+
+# making predictions - projecting to the whole region --------------------------------------
+
+# makes all combinations of x and y:
+load("results/grid_pred.Rdata")
+load("results/sdmTMB/m4.spatiotemporal.RData")
+
+year_vector = sort(as.numeric(unique(hake_weight_age_df$catch_year)))
+grid_pred$catch_year = year_vector[1]
+grid_pred_sdm = grid_pred
+for(i in 2:length(year_vector)) {
+  grid_pred$catch_year = year_vector[i]
+  grid_pred_sdm = rbind(grid_pred_sdm, grid_pred)
+}
+grid_pred_sdm = grid_pred_sdm[,c(1,2,4)]
+colnames(grid_pred_sdm) = c("X", "Y", "catch_year")
+grid_pred_sdm$catch_year = as.factor(grid_pred_sdm$catch_year)
+predicted_vals = predict(m4.spatiotemporal, newdata = grid_pred_sdm)
 
 
