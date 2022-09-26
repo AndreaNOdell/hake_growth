@@ -445,5 +445,17 @@ hake_corr_check$catch_year = as.numeric(hake_corr_check$catch_year)
 cor(hake_corr_check)
 
 
+# plotting weight at age density plot
+
+ggplot(hake_weight_age_df, aes(x=weight)) + 
+  geom_density() +
+  lims(x = c(0,1.5)) +
+  theme_classic() +
+  facet_wrap(~catch_year, ncol = 2,  dir = "v") +                                          
+  geom_vline(data = median_weights_by_year, aes(xintercept = med_weight), linetype = "dashed", col = "blue")
+
+median_weights_by_year = as.data.frame(hake_weight_age_df %>% 
+  group_by(catch_year) %>% 
+  summarise(med_weight = median(weight), n = n()))
 
 
