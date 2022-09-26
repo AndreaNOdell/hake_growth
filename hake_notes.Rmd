@@ -479,12 +479,12 @@ Variability can be partitioned into 4 ways (larsen et al 2001 - Designs for eval
 
 I am getting the hang of it. I started off with a very simple, non-spatial model where weight is predicted by age and cohort, with age and cohort as have a smoothing function. Then I turned on spatial, then the spatiotemporal random effect with an AR1 process. I tested two spatiotemporal models
 
-m2: weight ~ s(age) + s(cohort) 
+`m2: weight ~ s(age) + s(cohort)`
 
 ![](plots/sdmTMB/m2.png)
 ![](plots/sdmTMB/spatiotemp_resids_AR1.jpeg)
 
-m3: weight ~ s(age) + s(cohort) + catch_month
+`m3: weight ~ s(age) + s(cohort) + catch_month`
 
 ![](plots/sdmTMB/m3.png)
 ![](plots/sdmTMB/spatiotemp_resids_m3.jpeg)
@@ -519,7 +519,133 @@ Now looking at the outputs of m3
 
 Next week:  
 
-
 - time varying intercept model and compare to gams  
 - add a smoother on catch_year  
 - biomass of cohort in that year rather than cohort
+
+
+### Aug 22-29
+
+There are a few ways to include time-varying intercepts
+
+- as.factor(year) I tried this and the model didn't converge very well  
+- (1 | year) I tried this as well and the model didn't converge very well  
+- time_varying = ~ 1 This one worked the best. It follows a random walk
+
+`m4 = weight ~ 0 + s(new_age) + s(cohort) + catch_month with time-varying intercept`
+
+However, it doesn't look like it improved the residuals very much...
+
+![](plots/sdmTMB/residuals_m4.jpeg)
+
+Could it be that one of the predictors is time-varying rather than the intercept?
+
+I also tried including a smoother on catch_year in addition to the time-varying intercept and that doesn't seem to capture the differences in weight in 2013-2015
+
+`m5 = weight ~ 0 + s(new_age) + s(cohort) + catch_month + s(catch_year) with a time-varying intercept`
+
+![](plots/sdmTMB/residuals_m5.jpeg)
+
+
+Also tried a model that didn't include a smoother on catch year but instead created a separate slope for the smoother on new_age. I did this because I was hoping to capture the variability in more recent years that we saw in the observed weight at age in the north above. 
+
+
+Potentially include age as a time-varying slope to account for the changes in weight at age in more recent years? unfortunately can't include smoothers in the time-varying argument, but instead can use independent slopes for each year s(new_age, by = catch_year)
+
+`m6 = weight ~ 0 + s(new_age, by = catch_year)  + s(cohort) + catch_month with time-varying intercept`
+
+This model did not converge (non-positive Hessian definite)
+
+Tried removing the smoother on cohort, 
+
+`m7 =  weight ~ 0 + s(new_age, by = catch_year) + catch_month with time-varying intercept`
+
+This model converged, but it still doesn't capture the residuals in the more recent years.
+
+Also, realized the maximum residual is "Inf". I just don't think any of these models are doing too well, so I am stepping back and looking at the data once again.
+
+
+This first plot is weight at age curves by year. and the next one is just for the northern individuals.
+![](plots/weight-at-age/weight_at_age_by_year.jpeg)
+![](plots/weight-at-age/weight_at_age_by_year_north.jpeg)
+
+Then, by cohort 
+
+![](plots/weight-at-age/weight_at_age_by_cohort.jpeg)
+
+
+![](plots/weight-at-age/weight_at_age_by_month.jpeg)
+But as a caveat, here are how many observations of each age are sampled per month. Month 6 and 9 are very lightly sampled, so take with caution.
+
+![](plots/weight-at-age/observations_of_age_by_month.jpeg)
+
+`m8 = weight ~ s(new_age, by = catch_year)` Just spatial (not spatiotemporal)
+
+![](plots/sdmTMB/residuals_m8.jpeg)
+
+
+Okay, but even simpler, the spatial model with `weight ~ new_age` seems to minimize the residuals quite a bit.
+
+![](plots/sdmTMB/residuals_m8_simple.jpeg)
+
+*meeting with Kristin*
+- catch_month currently is a fixed linear effect, but the data tell us otherwise. Maybe best to consider it as a random effect
+- Does it need the spatial part or the spatiotemporal part or either?
+- what are the temporal trends and potential covariates (qualitatively)
+- standard deviation of the catch month random effect vs intercept, vs others to see how much those matter compared to the spatiotemporal. 
+- try to fit catch_month random effect, and then add the time-varying (but potentially confounded)
+- sub-areas within a region - weight-at-age curve for canadian vs US
+- fishery data - can't fit spatial model, but we know that the canadian fishery fishes in canada and the us fishery fishes in US, so we can at least have that spatial component (which for the MSE is relevant)
+- malick - relationships with temperature.
+
+
+### Sept 12-16
+
+Prior to this week, I have settled on a model `weight ~ 0 + s(new_age) + s(cohort) + (1 | catch_month) + (1 | catch_year)` and have tried three versions: spatiotemporal, spatial, and without random fields.
+
+![](results/sdmTMB/m4_AIC.png)
+
+According to AIC, the spatiotemporal model was the best model. It also converged very nicely.
+
+*Questions  for Kristin*
+
+1. how to make a mesh over the survey area?
+
+
+- plot the random effect levels for the catch_month
+-github action knit rmarkdown
+
+
+### Sept 19-23
+
+Trying to learn how to create a spatial domain, following code that Malick provided (in the `malick_code` folder of the project).
+
+![](plots/sdmTMB/mapping/spatial domain.jpeg)
+
+I was able to make a spatial domain following Michael Malick's code, however, when I go to make predictions on those new data, an error pops up saying 
+
+Error in vapply(RE_names, function(x) as.integer(nd[[x]]) - 1L, rep(1L,  : 
+  values must be length 4575,
+ but FUN(X[[1]]) result is length 0
+ 
+I tried reformatting the dataset, making sure that the UTM coordinates were aligned and that time was modeled (i.e. can't be considered as a factor class). Not entirely sure what else it could be. Either way, decided to continue making maps using the observed datapoints.
+
+Because time needed to be modeled (not considered a factor class), I had to restructure my model. It still had spatial and spatiotemporal random effects.
+
+`weight ~ 0 + s(new_age) + s(cohort) + (1 | catch_month)`  with time-varying intercept (~ 1) following a random walk.
+
+I overlayed some of the predictions over the map of the coastline and some interesting patterns arise, especially with spatial random effects.
+
+![](plots/sdmTMB/mapping/m4.st.spatialRE.jpeg)
+
+
+There is a very interesting spatial trend! It looks like the hake are lighter than average in areas where freshwater meets the ocean (columbia river basin and san joaquin river basin). 
+
+
+
+![](plots/sdmTMB/mapping/m4.st.stRE.jpeg)
+
+
+Looking at the time-varying intercepts, there is quite a clear temporal trend revealing pacific hake are becoming heavier than average! The information on temperature anomaly is pulled from Malick et al. (2020). The trend doesn't appear to be strongly tied to temperature, at least when visualized this way.
+
+![](plots/sdmTMB/time-varying-intercepts.jpeg)
