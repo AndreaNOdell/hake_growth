@@ -17,7 +17,9 @@ st_crs(hake_sdmTMB_df) = 4269
 hake_sdmTMB_df = st_transform(hake_sdmTMB_df, 32610)
 coords =  st_coordinates(hake_sdmTMB_df)
 coords = coords/1000
-hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords))
+hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords, 
+                                     hb_latitude = hake_weight_age_df$hb_latitude,
+                                     hb_longitude = hake_weight_age_df$hb_longitude))
 
 # create mesh
 mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 10)
@@ -201,8 +203,8 @@ hake_sdmTMB_df %>%
 
 # continuation of models
 hake_sdmTMB_df$catch_month = as.factor(hake_sdmTMB_df$catch_month)
-hake_sdmTMB_df$catch_year = as.factor(hake_sdmTMB_df$catch_year)
-hake_sdmTMB_df$cohort = as.numeric(as.character(hake_sdmTMB_df$cohort))
+hake_sdmTMB_df$catch_year = as.integer(as.character(hake_sdmTMB_df$catch_year))
+hake_sdmTMB_df$cohort = as.integer(hake_sdmTMB_df$cohort)
 
 m4.spatiotemporal = sdmTMB(
   data = hake_sdmTMB_df,
@@ -214,6 +216,33 @@ m4.spatiotemporal = sdmTMB(
   spatiotemporal = "AR1"
 )
 #save(m4.spatiotemporal, file = "results/sdmTMB/m4.spatiotemporal.RData")
+
+m4.alt.spatiotemporal = sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = 0 + weight ~ s(new_age) + s(cohort) + (1 | catch_month),
+  time_varying = ~1,
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002,
+                 2004, 2006, 2008, 2010, 2014, 2016),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+) # Can't predict missing or future years if catch_year is a factor. Instead 
+# switched to a time-varying intercept. 
+
+# This it the one!!! ----------------
+m4.alt.st.samplingyrs = sdmTMB(
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + (1 | catch_month),
+  mesh = mesh, 
+  time_varying = ~ 1,
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+)
+#save(m4.alt.st.samplingyrs, file = "results/sdmTMB/m4.alt.st.samplingyrs.RData")
 
 m4.spatial.only = sdmTMB(
   data = hake_sdmTMB_df,
@@ -232,7 +261,7 @@ m4.no.spatiotemp = sdmTMB(
 
 coefficients_m4_spatiotemporal = tidy(m4.spatiotemporal, "ran_pars", conf.int = TRUE)
 hake_sdmTMB_df$resids_m4spatiotemporal <- residuals(m4.spatiotemporal) # randomized quantile residuals
-predict_m4.spatiotemporal = predict(m4.spatiotemporal)
+predict_m4.st.alt = predict(m4.alt.st.samplingyrs)
 #save(predict_m4.spatiotemporal, file = "results/sdmTMB/predict_m4.spatiotemporal.RData")
 
 coefficients_m4_spatiotemporal %>% 
@@ -251,15 +280,15 @@ qqnorm(rq_res);qqline(rq_res)
 mcmc_res <- residuals(m4.spatiotemporal, type = "mle-mcmc", mcmc_iter = 201, mcmc_warmup = 200) 
 qqnorm(mcmc_res);qqline(mcmc_res)
 
-
-ggplot(predict_m4.spatiotemporal, aes(X, Y, col = omega_s)) +
+jpeg(filename = "plots/sdmTMB/m4.st.alt.spatialeffects.jpeg")
+ggplot(predict_m4.st.alt, aes(X, Y, col = omega_s)) +
   scale_colour_gradient2() +
   geom_point() +
-  facet_wrap(~catch_year) +
+  #facet_wrap(~catch_year) +
   coord_fixed() +
   labs(title= "m4 spatiotemporal") +
   theme(axis.text.x = element_text(angle = 60, hjust = 1))
-
+dev.off()
 
 # making predictions - projecting to the whole region --------------------------------------
 
@@ -276,7 +305,30 @@ for(i in 2:length(year_vector)) {
 }
 grid_pred_sdm = grid_pred_sdm[,c(1,2,4)]
 colnames(grid_pred_sdm) = c("X", "Y", "catch_year")
-grid_pred_sdm$catch_year = as.factor(grid_pred_sdm$catch_year)
-predicted_vals = predict(m4.spatiotemporal, newdata = grid_pred_sdm)
+grid_pred_sdm$catch_year = as.integer(as.character(grid_pred_sdm$catch_year))
+grid_pred_sdm$X = grid_pred_sdm$X/1000
+grid_pred_sdm$Y = grid_pred_sdm$Y/1000
+
+predicted_vals = predict(m4.alt.st.samplingyrs, newdata = grid_pred_sdm)
+
+
+
+# Varying intercepts
+temp_anomaly = c("NA", "NA", "NA", "Avg", "Hot", "Cold", "Cold", "Avg", 
+                 "Cold", "Cold", "Avg","Cold", "Cold", "Hot", "Hot")
+est <- as.list(m4.alt.st.samplingyrs$sd_report, "Est")
+est_se <- as.list(m4.alt.st.samplingyrs$sd_report, "Std. Error")
+varying_intercept = as.data.frame(cbind(intercept = est$b_rw_t, se = est_se$b_rw_t, year_vector, temp = temp_anomaly))
+varying_intercept$intercept = as.numeric(varying_intercept$intercept)
+varying_intercept$se = as.numeric(varying_intercept$se)
+
+jpeg(filename = "plots/sdmTMB/time-varying-intercepts.jpeg")
+ggplot(varying_intercept, aes(x = year_vector, y = intercept, col = temp)) +
+  geom_point() +
+  theme_classic() +
+  scale_color_manual(values=c("grey", "blue", "red", "black")) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  labs(title = "Time-Varying Intercept")
+dev.off()
 
 
