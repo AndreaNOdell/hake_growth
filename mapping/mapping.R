@@ -45,6 +45,10 @@ dat.coast.wc <- subset.shape(dat.coast, domain) # a 4871x8 dataframe
 xlims <- c(-135, -116)
 ylims <- c(32.5, 56)
 
+predict_m4.st.alt = cbind(predict_m4.st.alt, 
+                          hb_longitude = hake_weight_age_df$hb_longitude, 
+                          hb_latitude = hake_weight_age_df$hb_latitude)
+
 # Generate a base map with the coastline:
 p0 <- ggplot() + 
   geom_path(data = dat.coast.wc, aes(x = long, y = lat, group = group), 
@@ -52,10 +56,15 @@ p0 <- ggplot() +
   coord_map(projection = "mercator") + 
   scale_x_continuous(limits = xlims, expand = c(0, 0)) + 
   scale_y_continuous(limits = ylims, expand = c(0, 0)) + 
-  labs(list(title = "", x = "Longitude", y = "Latitude")) +
-  geom_point(data = hake_weight_age_df, aes(x = (hb_longitude*-1), y = hb_latitude, color = weight))
+  labs(x = "Longitude", y = "Latitude") +
+  scale_colour_gradient2() +
+  facet_wrap(~catch_year) +
+  theme_classic() +
+  geom_point(data = predict_m4.st.alt, aes(x = (hb_longitude*-1), y = hb_latitude, color = epsilon_st), 
+             size = 0.7, shape = 15)
+jpeg(filename = "plots/sdmTMB/mapping/m4.st.stRE.jpeg")
 p0
-
+dev.off()
 
 
 
