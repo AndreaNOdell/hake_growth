@@ -3,9 +3,15 @@ title: "Hake Notes"
 author: "Andrea Odell"
 date: '2022-07-04'
 output:
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
   html_document:
-    toc: true
+    toc: yes
     toc_depth: 3
+  word_document:
+    toc: yes
+    toc_depth: '3'
 ---
 
 ### June 27 - July 1, 2022
@@ -425,7 +431,7 @@ Notes on coordinate system for sdmTMB
 **I was on vacation from Thursday - Monday**
 
 
-### Aug 16 - 19
+### Aug 16-19, 2022
 
 The first thing I did was check correlation structure among key predictors from the data frame which included catch month, catch day, length, distance fished, latitude, longitude, catch year and cohort. Using the `cor()` function, there were a few correlations > 0.7.
 
@@ -524,7 +530,7 @@ Next week:
 - biomass of cohort in that year rather than cohort
 
 
-### Aug 22-29
+### Aug 22-29, 2022
 
 There are a few ways to include time-varying intercepts
 
@@ -588,18 +594,18 @@ Okay, but even simpler, the spatial model with `weight ~ new_age` seems to minim
 
 ![](plots/sdmTMB/residuals_m8_simple.jpeg)
 
-*meeting with Kristin*
-- catch_month currently is a fixed linear effect, but the data tell us otherwise. Maybe best to consider it as a random effect
+*Meeting with Kristin*  
+- catch_month currently is a fixed linear effect, but the data tell us otherwise. Maybe best to consider it as a random effect  
 - Does it need the spatial part or the spatiotemporal part or either?
-- what are the temporal trends and potential covariates (qualitatively)
-- standard deviation of the catch month random effect vs intercept, vs others to see how much those matter compared to the spatiotemporal. 
-- try to fit catch_month random effect, and then add the time-varying (but potentially confounded)
-- sub-areas within a region - weight-at-age curve for canadian vs US
-- fishery data - can't fit spatial model, but we know that the canadian fishery fishes in canada and the us fishery fishes in US, so we can at least have that spatial component (which for the MSE is relevant)
+- what are the temporal trends and potential covariates (qualitatively)  
+- standard deviation of the catch month random effect vs intercept, vs others to see how much those matter compared to the spatiotemporal.   
+- try to fit catch_month random effect, and then add the time-varying (but potentially confounded)  
+- sub-areas within a region - weight-at-age curve for canadian vs US  
+- fishery data - can't fit spatial model, but we know that the canadian fishery fishes in canada and the us fishery fishes in US, so we can at least have that spatial component (which for the MSE is relevant)  
 - malick - relationships with temperature.
 
 
-### Sept 12-16
+### Sept 12-16, 2022
 
 Prior to this week, I have settled on a model `weight ~ 0 + s(new_age) + s(cohort) + (1 | catch_month) + (1 | catch_year)` and have tried three versions: spatiotemporal, spatial, and without random fields.
 
@@ -616,7 +622,7 @@ According to AIC, the spatiotemporal model was the best model. It also converged
 -github action knit rmarkdown
 
 
-### Sept 19-23
+### Sept 19-23, 2022
 
 Trying to learn how to create a spatial domain, following code that Malick provided (in the `malick_code` folder of the project).
 
@@ -639,13 +645,52 @@ I overlayed some of the predictions over the map of the coastline and some inter
 ![](plots/sdmTMB/mapping/m4.st.spatialRE.jpeg)
 
 
-There is a very interesting spatial trend! It looks like the hake are lighter than average in areas where freshwater meets the ocean (columbia river basin and san joaquin river basin). 
+There is a very interesting spatial trend! It looks like the hake are lighter than average in areas nearby where freshwater meets the ocean (columbia river basin and san joaquin river basin) and a patch of heavier than average hake at the entrance (or exit?) of the strait of juan de fuca. Through quick search, it looks like there is a patch of greater primary productivity at the entrance of the strait of juan de fuca similar to where we see the patch of heavier than average fish (Davis, K. A., N. S. Banas, S. N. Giddings,S. A. Siedlecki, P. MacCready,E. J. Lessard, R. M. Kudela, andB. M. Hickey (2014), Estuary-enhanced upwelling of marine nutrients fuels coastal productivity in the U.S. Pacific Northwest, J. Geophys. Res. Oceans,119, 8778–8799)
 
 
 
 ![](plots/sdmTMB/mapping/m4.st.stRE.jpeg)
 
+### Sept 26-30, 2022
 
 Looking at the time-varying intercepts, there is quite a clear temporal trend revealing pacific hake are becoming heavier than average! The information on temperature anomaly is pulled from Malick et al. (2020). The trend doesn't appear to be strongly tied to temperature, at least when visualized this way.
 
 ![](plots/sdmTMB/time-varying-intercepts.jpeg)
+
+
+Malick et al. 2020 looked at whether the relationship between temperature and biomass remained stationary across life stages by splitting the data up into 3 age groups (age 2, 3-4, and 5+) and running the statistical model. Potentially something I can do...
+
+
+![](plots/sdmTMB/month-varying-intercepts.jpeg)
+
+When looking at the varying intercepts associated with month, there seems to be a linear increase according to the model. Previously, when just visualizing the data, there was a nonlinear trend in weight at age between months so we decided to treat catch_month as a random effect. This could be the result of uneven sample sizes which is accounted for as a random effect in the sdmTMB model. Might be worth switching cohort back to being a linear effect.
+
+
+*GAMS*
+
+
+![](plots/sdmTMB/weight-at-age-GAM.jpeg)
+![](plots/sdmTMB/cohort-GAM-scaled.jpeg)
+
+The linear component of age is positive (~ 20) and the linear component of cohort is negative (~ -5). With age, that checks out (weight should be positively associated with age), but it seems as though there is a negative trend with cohorts - so more recent cohorts are trending lighter than average when compared to previous cohorts. This is interesting to think about in conjunction with the time-varying intercept, where hake are trending heavier than average through the time-series. However, there is greater uncertainty in more recent cohorts because of fewer years available to estimate weight-at-age. The standard deviation of the weights for each smoothing function is greater for age than for cohort, which I interpret as the extent of wiggliness. 
+
+
+
+After realizing that catch_month is has a linear effect on weight, I reran the model with catch_month as a linear predictor `weight ~ 0 + s(new_age) + s(cohort) + catch_month` with time varying intercept. I ran two versions of this model: spatial + spatiotemporal (m4.2) and just spatiotemporal (no spatial; m4.3). I did this because the spatial standard deviation (omega_s) was fairly low compared to the spatiotemporal standard deviation (epsilon_st) and one of the vignettes mentioned not to run a spatial model when the spatiotemporal SD was much larger than the spatial SD. When I ran those two new models, the AIC indicated that m4.2 was the best model, m4.3 was <1 AIC value larger so there wasn't too much of a difference butthis model had a few errors when looking at model diagnostics. The original model I was using where catch_month was a random effect was ~15 AIC values greater than the other models. 
+
+The only change that occurred in the outputs/coefficients when switching catch_month to a linear predictor was that the coefficient values for the time-varying intercepts shifted to smaller numbers, but the trend remained the same. Everything else remained the same and instead catch_month has a linear effect of 0.13.
+
+
+*Things to remember*
+- Cohort effects - is there density dependence? i.e. in years with high recruitment and consequently more compeitition for resources, do those cohorts remain lighter than average?
+- Pacific Hake also have spatial structure (larger, older fish travel more northward) - be mindful of how that might influence what we see. Is that captured in the spatial sd? or in catch_month (which is associated with space because sampling occurs more northward each month)
+
+
+Should I include model validation? If so, how? 75%/25% training/testing? Could be included in future work when we are focused on predicting, whereas right now just looking at patterns.
+
+
+
+
+
+
+
