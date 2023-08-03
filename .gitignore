@@ -6,3 +6,6 @@
 *.csv
 *.html
 /malick_code
+*/.DS_Store
+.DS_Store
+*.RData
