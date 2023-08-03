@@ -51,18 +51,20 @@ predict_m4.st.alt = cbind(predict_m4.st.alt,
 
 # Generate a base map with the coastline:
 p0 <- ggplot() + 
+  geom_point(data = predict_m4.st.alt[predict_m4.st.alt$catch_year != 1986,], aes(x = (hb_longitude*-1), y = hb_latitude, color = exp(est)), 
+             size = 0.8, shape = 15) +
   geom_path(data = dat.coast.wc, aes(x = long, y = lat, group = group), 
             color = "black", size = 0.25) + 
   coord_map(projection = "mercator") + 
   scale_x_continuous(limits = xlims, expand = c(0, 0)) + 
   scale_y_continuous(limits = ylims, expand = c(0, 0)) + 
   labs(x = "Longitude", y = "Latitude") +
-  scale_colour_gradient2() +
+  scale_colour_gradient2(mid = "red",  high = "blue") +
   facet_wrap(~catch_year) +
-  theme_classic() +
-  geom_point(data = predict_m4.st.alt, aes(x = (hb_longitude*-1), y = hb_latitude, color = epsilon_st), 
-             size = 0.7, shape = 15)
-jpeg(filename = "plots/sdmTMB/mapping/m4.st.stRE.jpeg")
+  theme_classic()
+#jpeg(filename = "plots/sdmTMB/mapping/m4.st.stRE.jpeg")
+
+jpeg("plots/sdmTMB/mapping/m4.st.spatialRE.jpeg", units="in", width=5, height=5, res=300)
 p0
 dev.off()
 
