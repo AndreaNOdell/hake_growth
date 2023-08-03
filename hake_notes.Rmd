@@ -377,7 +377,7 @@ Very clear year and cohort effects, some with credible intervals not passing ove
         - can lead to unequal smoothing 
         - smoother would be smoothing out ageing error?
         - in stock synthesis, treat strong cohorts differently
-    - maybe add a cohort efect for large cohorts
+    - maybe add a cohort effect for large cohorts
     - Kiva doesn't think it's that important (error in variables)
     - Even if I don't include it in the model immediately, it could be a way to explain some of the results
 - For gamm with year and cohort random effect, there was agreement on the presence of autocorrelation in the cohort random effect  
@@ -681,16 +681,67 @@ After realizing that catch_month is has a linear effect on weight, I reran the m
 The only change that occurred in the outputs/coefficients when switching catch_month to a linear predictor was that the coefficient values for the time-varying intercepts shifted to smaller numbers, but the trend remained the same. Everything else remained the same and instead catch_month has a linear effect of 0.13.
 
 
-*Things to remember*
-- Cohort effects - is there density dependence? i.e. in years with high recruitment and consequently more compeitition for resources, do those cohorts remain lighter than average?
+*Things to remember*  
+- Cohort effects - is there density dependence? i.e. in years with high recruitment and consequently more compeitition for resources, do those cohorts remain lighter than average?  
 - Pacific Hake also have spatial structure (larger, older fish travel more northward) - be mindful of how that might influence what we see. Is that captured in the spatial sd? or in catch_month (which is associated with space because sampling occurs more northward each month)
 
 
-Should I include model validation? If so, how? 75%/25% training/testing? Could be included in future work when we are focused on predicting, whereas right now just looking at patterns.
+Model Validation?
+- AIC
+    - well-documented biases with mixed effects models
+- k-fold cross validation (https://pbs-assess.github.io/sdmTMB/articles/cross-validation.html)
+- tmbstan package to sample from joint posterior, evaluate accuracy of laplace approximation or perform posterior predictive checks
+- residuals: MCMC avoids statistical issues but is slower
+- simulate.sdmTMB() can simulate from fitted models and sdmTMB_simulate() can simulate entirely new data to ensure identifiability, evaluate bias and precision in estimates, or evaluate consequences of model misspecification.
+
+There are also codes for each ship that sampled. It looks like there are 6 unique ship codes. Might be worth including ship_code as a covariate to account for ship-ship variation?
+
+In terms of predicting over the spatial domain, the reason it is not working right now is because each spatial coordinate is being predicted by all of the years, months, cohorts, and ages. What might need to be done is instead figure out potential drivers for spatial variation which could be included into the model, so the predictors only have one value at each spatial coordinate.
 
 
+*Notes for Meeting with Kristin*
+- negative time-varying intercepts
+    - Intro to sdmTMB vignette also has time-varying coefficients that are all negative. I also kinda wonder if this has something to do with how they are calculated. In the output, it shows `(Intercept)-1991` as the parameter name, so is it subtracting from the "current" year?
+    - Originally I have the intercept as a time-varying parameter (random walk), but I tried other ways to vary the intercept
+        - `as.factor(catch_year)` (i.e. IID) - did not converge
+        - `(1 | catch_year)` random effect 
+        
+
+When we assume catch_year is a random effect
+
+![](plots/sdmTMB/m4.5-year_RE.jpeg)
+
+So, I think the question is, should we assume time as a random effect or as a random walk? The reason why I switched to time as a random walk is because in order to make predictions, "time needs to be modeled" (i.e. not a random effect)
 
 
+For the GAMs, I scaled them according to the response variable "weight" because I thought that would be easier to interpret. Below are both the scaled and unscaled GAM plots. I reran these plots using the newest model with catch_year as a random effect
+
+![](plots/sdmTMB/weight-at-age-GAM-notscaled.jpeg)
+![](plots/sdmTMB/weight-at-age-GAM.jpeg)
+
+![](plots/sdmTMB/cohort-smoothed-function.jpeg)
 
 
+### Oct. 24-28
 
+![](plots/FromStockAssessment/weight-at-age-matrix.png)
+
+This is a clear example of the sensitivity of weight at age matrix to the data quality used to generate it. The opaqueness of the colors indicate the relative size, such that more translucent fish are lighter than those more intense colors. In those early years (late 70s), the matrix indicates the weight at each age are relatively heavier than recent years. HOWEVER, this is a direct result of the sampling that occurred in that year (primarily speaking about 1976 survey). The sampling occurred largely in northern Washington and Canada, where my preliminary spatial exploration of weight trends indicates is where heavier hake tend to reside. This leads to an overestimation of weight at age for those years and the surrounding ages and years where missing data are interpolated. 
+
+
+### August 03, 2023
+
+*Notes from meeting with Kristin 08/02/23*
+
+- Something to consider: Having age, year, and cohort within the same model may be confounding. Might need to pick just 2 covariates since cohort is a function of age and year.   
+- Next Steps:
+    - Run models with age as a required covariate (because we are dealing with weight-at-age) paired with either cohort or year. Do this without spatial or spatiotemporal random effects. Determine best fit model
+    - Add spatial and/or spatiotemporal random effects to the best model.
+- Still waiting on data from more recent years and the fishery-dependent data. Kristin is putting in a request for that.
+- Thoughts on PICES presentation
+    - 3 solid results figures
+    - What's next - could be discussed as part of context or at the end
+    - Think about environmental covariates
+
+
+Today I continued to work in the sdm-TMB.r script. I created a new section titled **Pairwise covariate model exploration** where I begin the model exploration Kristin and I spoke about (see notes above). 
