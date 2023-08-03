@@ -1,16 +1,18 @@
 load("results/hake_weight_age_df.RData")
+load("results/sdmTMB/m4.alt.st.samplingyrs.RData")
 library(dplyr)
 library(sf)
 library(sp)
 library(rgdal)
 library(ggplot2)
 library(sdmTMB)
+library(visreg)
 
 
 # create spatial dataframe
 hake_sdmTMB_df = hake_weight_age_df %>% 
   dplyr::select(new_age, weight, catch_year, catch_month, cohort, length, distance_fished, sex_description,
-         hb_longitude, hb_latitude) 
+                hb_longitude, hb_latitude) 
 hake_sdmTMB_df$hb_longitude = -1 * hake_sdmTMB_df$hb_longitude
 hake_sdmTMB_df = st_as_sf(hake_sdmTMB_df, coords = c("hb_longitude", "hb_latitude"))
 st_crs(hake_sdmTMB_df) = 4269
@@ -20,6 +22,11 @@ coords = coords/1000
 hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords, 
                                      hb_latitude = hake_weight_age_df$hb_latitude,
                                      hb_longitude = hake_weight_age_df$hb_longitude))
+
+# continuation of models
+#hake_sdmTMB_df$catch_month = as.factor(hake_sdmTMB_df$catch_month)
+hake_sdmTMB_df$catch_year = as.integer(as.character(hake_sdmTMB_df$catch_year))
+hake_sdmTMB_df$cohort = as.integer(hake_sdmTMB_df$cohort)
 
 # create mesh
 mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 10)
@@ -259,18 +266,20 @@ m4.no.spatiotemp = sdmTMB(
   spatial = "off"
 )
 
-coefficients_m4_spatiotemporal = tidy(m4.spatiotemporal, "ran_pars", conf.int = TRUE)
+coefficients_m4.alt.st.samplingyrs = tidy(m4.alt.st.samplingyrs, "ran_pars", conf.int = TRUE)
 hake_sdmTMB_df$resids_m4spatiotemporal <- residuals(m4.spatiotemporal) # randomized quantile residuals
 predict_m4.st.alt = predict(m4.alt.st.samplingyrs)
 #save(predict_m4.spatiotemporal, file = "results/sdmTMB/predict_m4.spatiotemporal.RData")
 
-coefficients_m4_spatiotemporal %>% 
+coefficients_m4.alt.st.samplingyrs %>% 
   filter(!term %in% "range") %>% 
 ggplot(aes( x = estimate, y = term)) +
   geom_point() +
   theme_classic() +
-  lims( x = c(-0.25, 1)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "grey")
+  lims( x = c(-0.1, 0.4)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
+  geom_errorbar(aes(xmin=conf.low, xmax=conf.high), width=.1) +
+  labs(y = "coefficient", subtitle = "point estimates with confidence intervals")
 
 # check residuals
 rq_res <- residuals(m4.spatiotemporal)
@@ -294,41 +303,198 @@ dev.off()
 
 # makes all combinations of x and y:
 load("results/grid_pred.Rdata")
-load("results/sdmTMB/m4.spatiotemporal.RData")
+load("results/sdmTMB/m4.2.RData")
 
 year_vector = sort(as.numeric(unique(hake_weight_age_df$catch_year)))
+month_vector = sort(as.numeric(unique(hake_weight_age_df$catch_month)))
+age_vector = sort(as.numeric(unique(hake_weight_age_df$new_age)))
+cohort_vector = sort(as.numeric(unique(hake_weight_age_df$cohort)))
 grid_pred$catch_year = year_vector[1]
 grid_pred_sdm = grid_pred
-for(i in 2:length(year_vector)) {
+for(i in 2:length(year_vector)) { # add years
   grid_pred$catch_year = year_vector[i]
   grid_pred_sdm = rbind(grid_pred_sdm, grid_pred)
 }
-grid_pred_sdm = grid_pred_sdm[,c(1,2,4)]
-colnames(grid_pred_sdm) = c("X", "Y", "catch_year")
-grid_pred_sdm$catch_year = as.integer(as.character(grid_pred_sdm$catch_year))
-grid_pred_sdm$X = grid_pred_sdm$X/1000
-grid_pred_sdm$Y = grid_pred_sdm$Y/1000
+grid_pred_sdm$catch_month = month_vector[1] # add month
+grid_pred_sdm_full = grid_pred_sdm
+for(i in 2:length(month_vector)) { 
+  grid_pred$catch_month = month_vector[i]
+  grid_pred_sdm_full = rbind(grid_pred_sdm_full, grid_pred_sdm)
+}
+grid_pred_sdm_full$new_age = age_vector[1] # add age
+grid_pred_sdm_full2 = grid_pred_sdm_full
+for(i in 2:length(age_vector)) { 
+  grid_pred_sdm_full$new_age = age_vector[i]
+  grid_pred_sdm_full2 = rbind(grid_pred_sdm_full2, grid_pred_sdm_full)
+}
+grid_pred_sdm_full2$cohort = cohort_vector[1] # add age
+grid_pred_sdm_full3 = grid_pred_sdm_full2
+for(i in 2:length(cohort_vector)) { 
+  grid_pred_sdm_full2$cohort = cohort_vector[i]
+  grid_pred_sdm_full3 = rbind(grid_pred_sdm_full3, grid_pred_sdm_full2)
+}
 
-predicted_vals = predict(m4.alt.st.samplingyrs, newdata = grid_pred_sdm)
+
+grid_pred_sdm_full3$catch_month = as.integer(as.character(grid_pred_sdm_full3$catch_month))
+grid_pred_sdm_full3$new_age = as.integer(as.character(grid_pred_sdm_full3$new_age))
+grid_pred_sdm_full3$X = grid_pred_sdm_full3$X/1000
+grid_pred_sdm_full3$Y = grid_pred_sdm_full3$Y/1000
+grid_pred_sdm_full3 = grid_pred_sdm_full3[,c(1:2,4:7)]
+colnames(grid_pred_sdm_full3) = c("X", "Y", "catch_year", "catch_month", "new_age", "cohort")
+plot(grid_pred_sdm_full3$X, grid_pred_sdm_full3$Y)
+
+predicted_vals = predict(m4.5, newdata = grid_pred_sdm_full)
 
 
 
 # Varying intercepts
 temp_anomaly = c("NA", "NA", "NA", "Avg", "Hot", "Cold", "Cold", "Avg", 
                  "Cold", "Cold", "Avg","Cold", "Cold", "Hot", "Hot")
-est <- as.list(m4.alt.st.samplingyrs$sd_report, "Est")
-est_se <- as.list(m4.alt.st.samplingyrs$sd_report, "Std. Error")
+est <- as.list(m4.2$sd_report, "Est")
+est_se <- as.list(m4.2$sd_report, "Std. Error")
 varying_intercept = as.data.frame(cbind(intercept = est$b_rw_t, se = est_se$b_rw_t, year_vector, temp = temp_anomaly))
 varying_intercept$intercept = as.numeric(varying_intercept$intercept)
 varying_intercept$se = as.numeric(varying_intercept$se)
 
-jpeg(filename = "plots/sdmTMB/time-varying-intercepts.jpeg")
+jpeg(filename = "plots/sdmTMB/time-varying-intercepts.m4.2.jpeg", units="in", width=5, height=5, res = 300)
 ggplot(varying_intercept, aes(x = year_vector, y = intercept, col = temp)) +
   geom_point() +
   theme_classic() +
   scale_color_manual(values=c("grey", "blue", "red", "black")) +
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
-  labs(title = "Time-Varying Intercept")
+  labs(title = "Time-Varying Intercept - m4.2")
 dev.off()
+
+  
+
+# Highlight everything and run it - otherwise won't run.
+jpeg(filename = "plots/sdmTMB/month-varying-intercepts.jpeg", units="in", width=4, height=3, res = 300)
+ggplot(month_vary_intercept, aes(x = term, y = estimate)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  labs(title = "Month Time-Varying Intercept") + 
+  scale_x_discrete(labels=c("catch_month_6" = "June", 
+                            "catch_month_7" = "July",
+                            "catch_month_8" = "August",
+                            "catch_month_9" = "September")) +
+  theme_classic()
+dev.off()
+
+
+# Visualising GAMs
+jpeg(filename = "plots/sdmTMB/cohort-GAM-scaled.jpeg", units="in", width=4, height=3, res = 300)
+visreg::visreg(m4.5, xvar = "cohort", 
+               xlim = c(1980, 2015), ylim = c(-0.1, 2), scale = "response")
+title(main = "cohort smoothed function")
+dev.off()
+
+jpeg(filename = "plots/sdmTMB/cohort-smoothed-function.jpeg", units="in", width=4, height=3, res = 300)
+visreg::visreg(m4.5, xvar = "cohort", 
+               xlim = c(1980, 2015), ylim = c(-5, 5))
+title(main = "cohort smoothed function")
+dev.off()
+
+jpeg(filename = "plots/sdmTMB/weight-at-age-GAM.jpeg", units="in", width=4, height=3, res = 300)
+visreg::visreg(m4.5, xvar = "new_age", 
+               xlim = c(0, 15), ylim = c(-0.1, 2), scale = "response")
+title(main = "weight-at-age smoothed function - scaled")
+dev.off()
+
+jpeg(filename = "plots/sdmTMB/weight-at-age-GAM-notscaled.jpeg", units="in", width=4, height=3, res = 300)
+visreg::visreg(m4.5, xvar = "new_age", xlim = c(0, 15), ylim = c(-7, 7))
+title(main = "weight-at-age smoothed function")
+dev.off()
+
+
+# okay let's revisit the model and make catch_month a linear predictor.
+
+m4.2 = sdmTMB( # spatial and spatiotemporal
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + catch_month,
+  mesh = mesh, 
+  time_varying = ~ 1,
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+)
+#save(m4.2, file = "results/sdmTMB/m4.2.RData")
+pred_avg_sim <- predict(m4.2, return_tmb_object = TRUE)
+index_avg_sim <- get_index(pred_avg_sim, bias_correct = TRUE)
+cond_index <- ggplot(index_avg_sim, aes(x = catch_year, y = est)) +
+  labs(y = "Predicted weight", x = "Year") +
+  geom_point(size = 2.5, shape = 21, fill = "gray1", color = "white") +
+  geom_errorbar(data = index_avg_sim, inherit.aes = FALSE, 
+                aes(x = catch_year, ymax = upr, ymin = lwr),
+                width = 0, alpha = 0.8, color = "gray1", size = 0.7) +
+  theme(axis.title = element_text(size = 9),
+        legend.position = "bottom",
+        legend.background = element_blank(),
+        legend.title = element_text(size = 9),
+        legend.spacing.x = unit(0, 'cm'),
+        plot.margin = unit(c(0.4, 0.4, 0.4, 0), "cm")) +
+  guides(linetype = "none",
+         color = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 1,
+                              keywidth = 0.1, keyheight = 0.1, default.unit = "inch",
+                              override.aes = list(linetype = c(1,1,1,1,1,0),
+                                                  shape = c(NA,NA,NA,NA,NA,16),
+                                                  alpha = rep(0.8, 6),
+                                                  color = pal)))
+
+m4.3 = sdmTMB( # just spatiotemporal no spatial
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + catch_month,
+  mesh = mesh, 
+  time_varying = ~ 1,
+  family = lognormal(link = "log"),
+  spatial = "off",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+) # this has very similar AIC value to m4.2, but the sanity check revealed some 
+# convergence issues
+
+m4.4 = sdmTMB( # spatial and spatiotemporal
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age) + s(cohort) + catch_month + as.factor(catch_year),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1"
+) # did not converge
+
+
+hake_sdmTMB_df$catch_year = as.factor(hake_sdmTMB_df$catch_year)
+m4.5 = sdmTMB( # spatial and spatiotemporal
+  data = hake_sdmTMB_df,
+  formula = weight ~ 1 + s(new_age) + s(cohort) + catch_month + (1 | catch_year),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  time = "catch_year",
+  spatiotemporal = "AR1",
+  control = sdmTMBcontrol(newton_loops = 1)
+)
+
+temp_anomaly = c("NA", "NA", "NA", "Avg", "Hot", "Cold", "Cold", "Avg", 
+                 "Cold", "Cold", "Avg","Cold", "Cold", "Hot", "Hot")
+jpeg(filename = "plots/sdmTMB/m4.5-year_RE.jpeg", units="in", width=4, height=3, res = 300)
+tidy(m4.5, "ranef", conf.int = TRUE) %>% 
+  mutate(year = sort(unique(hake_sdmTMB_df$catch_year)), temp = temp_anomaly) %>% 
+  ggplot(aes(x = year, y = estimate, col = temp)) +
+  geom_point() +  
+  geom_errorbar(aes(ymin=estimate-std.error, ymax=estimate+std.error), width=.2) +
+  scale_color_manual(values=c("grey", "blue", "red", "black")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  labs(title = "catch_year as random effect")
+dev.off()
+
+# Pairwise covariate model exploration-----------------------------------
+
+# For this model exploration, I will explore 3 nested models
+# 1. m_age <- weight ~ age
+# 2. m_age_cohort <- weight ~ age + cohort
+# 3. m_age_year <- weight ~ age + year
 
 
