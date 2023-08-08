@@ -722,14 +722,23 @@ For the GAMs, I scaled them according to the response variable "weight" because 
 ![](plots/sdmTMB/cohort-smoothed-function.jpeg)
 
 
-### Oct. 24-28
+### Oct. 24-28, 2022
 
 ![](plots/FromStockAssessment/weight-at-age-matrix.png)
 
 This is a clear example of the sensitivity of weight at age matrix to the data quality used to generate it. The opaqueness of the colors indicate the relative size, such that more translucent fish are lighter than those more intense colors. In those early years (late 70s), the matrix indicates the weight at each age are relatively heavier than recent years. HOWEVER, this is a direct result of the sampling that occurred in that year (primarily speaking about 1976 survey). The sampling occurred largely in northern Washington and Canada, where my preliminary spatial exploration of weight trends indicates is where heavier hake tend to reside. This leads to an overestimation of weight at age for those years and the surrounding ages and years where missing data are interpolated. 
 
+### Nov. 2022 - Jan 2023
 
-### August 03, 2023
+During this time I was working on the NMFS-SG Joint Fellowship Application
+
+### Feb. 2023 - Jul. 2023
+
+During this time I was focusing on my Qualifying Exam and Chapter 1 of my dissertation
+
+I was then awarded the NMFS-SG Fellowship!
+
+### August 2023
 
 *Notes from meeting with Kristin 08/02/23*
 
@@ -744,4 +753,21 @@ This is a clear example of the sensitivity of weight at age matrix to the data q
     - Think about environmental covariates
 
 
-Today I continued to work in the sdm-TMB.r script. I created a new section titled **Pairwise covariate model exploration** where I begin the model exploration Kristin and I spoke about (see notes above). 
+I continued to work in the sdm-TMB.r script. I created a new section titled **Pairwise covariate model exploration** where I begin the model exploration Kristin and I spoke about (see notes above). 
+
+I am starting out with 3 main model configurations before incorporating the spatial and spatiotemporal random effects. This includes:
+
+1. m_age <- weight ~ s(age)
+2. m_age_cohort <- weight ~ s(age) + cohort
+3. m_age_year <- weight ~ s(age) + (1 | year)
+
+
+For model 1, I tested the fit to a lognormal link log and a gamma link log. The lognormal link log was a better fit according to AIC which was the case in previous model iterations.
+
+For model 2, I tested the fit with a smoother on cohort and cohort as a random effect. The random effect model was a better fit according to AIC (>3000). However, to me it makes more sense to have cohort as a smoother since the effect on cohort one year to the next might be correlated? Not sure. Maybe this data doesn't support that.
+
+![](plots/nested_models/cohort_random_effects.jpeg)
+![](plots/nested_models/cohort_smoother.jpeg)
+
+
+

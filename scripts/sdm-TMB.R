@@ -8,7 +8,7 @@ library(ggplot2)
 library(sdmTMB)
 library(visreg)
 
-
+# setup -------------
 # create spatial dataframe
 hake_sdmTMB_df = hake_weight_age_df %>% 
   dplyr::select(new_age, weight, catch_year, catch_month, cohort, length, distance_fished, sex_description,
@@ -37,7 +37,7 @@ plot(mesh)
 #   coord_equal()
 
 
-# try diff models
+# try diff models --------
 hake_sdmTMB_df$cohort = as.integer(as.character(hake_sdmTMB_df$cohort))
 hake_sdmTMB_df$catch_year = as.integer(as.character(hake_sdmTMB_df$catch_year))
 
@@ -497,4 +497,70 @@ dev.off()
 # 2. m_age_cohort <- weight ~ age + cohort
 # 3. m_age_year <- weight ~ age + year
 
+# 1.
+m_age = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ 1 + s(new_age),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "off",
+  spatiotemporal = "off"
+)
 
+# 2.
+# smoother on cohort
+m_age_cohort = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ 1 + s(new_age) + s(cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "off",
+  spatiotemporal = "off"
+)
+
+# cohort as random effect
+hake_sdmTMB_df$cohort = as.factor(hake_sdmTMB_df$cohort)
+m_age_cohort_re = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + (1 | cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "off",
+  spatiotemporal = "off"
+)
+
+# plot the cohort random effects
+varying_intercepts = tidy(m_age_cohort_re, "ranef", conf.int = TRUE)[,1:2]
+varying_intercepts$term <- c(1973:2016)
+jpeg(filename = "plots/nested_models/cohort_random_effects.jpeg", units="in", width=5, height=3, res = 300)
+ggplot(varying_intercepts, aes(x = term, y = estimate)) +
+  geom_point() +
+  theme_classic() +
+  labs(title = "cohort random effects")
+dev.off()
+
+# plot the smoother on cohort
+jpeg(filename = "plots/nested_models/cohort_smoother.jpeg", units="in", width=5, height=3, res = 300)
+plot_smooth(m_age_cohort, select =  2)
+dev.off()
+
+# 3  year modeled as a random effect/intercept
+hake_sdmTMB_df$catch_year <- as.factor(hake_sdmTMB_df$catch_year)
+m_age_year = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + (1 | catch_year),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "off",
+  spatiotemporal = "off",
+  control = sdmTMBcontrol(newton_loops = 1)
+)
+
+varying_intercepts = tidy(m_age_year, "ranef", conf.int = TRUE)[,1:2]
+varying_intercepts$term <- c(1986, 1989, 1992, 1995, 1998, 2001, 2003, 2005, 2007, 2009, 2011, 2012, 2013, 2015, 2017)
+varying_intercepts$temp_anomaly = c("NA", "NA", "NA", "Avg", "Hot", "Cold", "Cold", "Avg", "Cold", "Cold", "Avg","Cold", "Cold", "Hot", "Hot")
+
+ggplot(varying_intercepts, aes(x = term, y = estimate, col = temp_anomaly)) +
+  geom_point() +
+  scale_color_manual(values = c("gray", "blue", "red", "black")) +
+  theme_classic()
