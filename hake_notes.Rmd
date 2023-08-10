@@ -770,4 +770,4 @@ For model 2, I tested the fit with a smoother on cohort and cohort as a random e
 ![](plots/nested_models/cohort_smoother.jpeg)
 
 
-
+Between the four different models - `s(age)`, `s(age) + s(cohort)`, `s(age) + (1 | cohort)`, `s(age) + (1 | year)` - The `s(age) + (1 | cohort)` model was the best fit (>2000) followed by `s(age) + (1 | year)`, `s(age) + s(cohort)`, and `s(age)`.

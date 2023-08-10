@@ -28,6 +28,13 @@ hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords,
 hake_sdmTMB_df$catch_year = as.integer(as.character(hake_sdmTMB_df$catch_year))
 hake_sdmTMB_df$cohort = as.integer(hake_sdmTMB_df$cohort)
 
+# visualize weight data
+jpeg(filename = "plots/data_exploration/weight_data_hist.jpeg", units="in", width=6, height=3, res = 300)
+par(mfrow = c(1,2))
+hist(hake_sdmTMB_df$weight, main = "hist. of weight")
+hist(log(hake_sdmTMB_df$weight), main = "hist of log weight")
+dev.off()
+
 # create mesh
 mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 10)
 plot(mesh)
@@ -564,3 +571,5 @@ ggplot(varying_intercepts, aes(x = term, y = estimate, col = temp_anomaly)) +
   geom_point() +
   scale_color_manual(values = c("gray", "blue", "red", "black")) +
   theme_classic()
+
+AIC(m_age, m_age_cohort, m_age_cohort_re, m_age_year) # model with age and cohort as random effect was the best fit
