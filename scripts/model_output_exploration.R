@@ -1,0 +1,8 @@
+library(dplyr)
+library(sf)
+library(sp)
+library(rgdal)
+library(ggplot2)
+library(sdmTMB)
+library(visreg)
+load("results/sdmTMB/cohortRE_s_st_model.RData")

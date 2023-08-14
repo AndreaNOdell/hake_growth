@@ -26,7 +26,7 @@ hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords,
 # continuation of models
 #hake_sdmTMB_df$catch_month = as.factor(hake_sdmTMB_df$catch_month)
 hake_sdmTMB_df$catch_year = as.integer(as.character(hake_sdmTMB_df$catch_year))
-hake_sdmTMB_df$cohort = as.integer(hake_sdmTMB_df$cohort)
+hake_sdmTMB_df$cohort = as.factor(hake_sdmTMB_df$cohort)
 
 # visualize weight data
 jpeg(filename = "plots/data_exploration/weight_data_hist.jpeg", units="in", width=6, height=3, res = 300)
@@ -533,7 +533,10 @@ m_age_cohort_re = sdmTMB(
   mesh = mesh, 
   family = lognormal(link = "log"),
   spatial = "off",
-  spatiotemporal = "off"
+  spatiotemporal = "off",
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997,
+                 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014,
+                 2016)
 )
 
 # plot the cohort random effects
@@ -551,9 +554,53 @@ jpeg(filename = "plots/nested_models/cohort_smoother.jpeg", units="in", width=5,
 plot_smooth(m_age_cohort, select =  2)
 dev.off()
 
-# 3  year modeled as a random effect/intercept
+# 3  
+
+# year modeled as a random walk 
+hake_sdmTMB_df$catch_year <- as.integer(as.character(hake_sdmTMB_df$catch_year))
+m_age_year_rw = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ 0 + s(new_age),
+  mesh = mesh, 
+  time_varying = ~ 1,
+  time = "catch_year",
+  family = lognormal(link = "log"),
+  spatial = "off",
+  spatiotemporal = "off",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997,
+                 1999,2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016
+                 )
+  )
+
+
+temp_info = as.data.frame(cbind(year = c(1986, 1989, 1992, 1995, 1998, 2001, 2003, 2005, 2007, 2009, 2011, 2012, 2013, 2015, 2017), temp_anomaly = c("NA", "NA", "NA", "Avg", "Hot", "Cold", "Cold", "Avg", "Cold", "Cold", "Avg","Cold", "Cold", "Hot", "Hot")))
+temp_info$year = as.numeric(temp_info$year)
+extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997,
+               1999,2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016
+)
+est <- as.list(m_age_year_rw$sd_report, "Est") # extract rw estimates
+year_rw_est = as.data.frame(cbind(year = 1986:2017, est = est$b_rw_t)) # create dataframe
+year_rw_est = year_rw_est %>% # determine whether data was interpolated
+  mutate(interpolated = year %in% extra_time)
+year_rw_est = left_join(year_rw_est, temp_info, by = join_by(year)) 
+year_rw_est[is.na(year_rw_est)] <- "NA"
+
+jpeg(filename = "plots/nested_models/year_rw.jpeg", units="in", width=5, height=3, res = 300)
+ggplot(year_rw_est, aes(x = year, y = est)) +
+  geom_line(col = "gray") +
+  geom_point(aes(shape = interpolated, col = temp_anomaly)) +
+  scale_color_manual(values = c("black", "blue", "red", "dark gray")) +
+  scale_shape_manual(values = c(19,4), guide = "none") +
+  labs(title = "Year as Random Walk", y = "coefficient") +
+  theme_classic()
+dev.off()
+  
+
+
+# year modeled as a random effect/intercept
 hake_sdmTMB_df$catch_year <- as.factor(hake_sdmTMB_df$catch_year)
-m_age_year = sdmTMB( 
+m_age_year_re = sdmTMB( 
   data = hake_sdmTMB_df,
   formula = weight ~ s(new_age) + (1 | catch_year),
   mesh = mesh, 
@@ -563,13 +610,61 @@ m_age_year = sdmTMB(
   control = sdmTMBcontrol(newton_loops = 1)
 )
 
-varying_intercepts = tidy(m_age_year, "ranef", conf.int = TRUE)[,1:2]
+varying_intercepts = tidy(m_age_year_re, "ranef", conf.int = TRUE)[,1:2]
 varying_intercepts$term <- c(1986, 1989, 1992, 1995, 1998, 2001, 2003, 2005, 2007, 2009, 2011, 2012, 2013, 2015, 2017)
 varying_intercepts$temp_anomaly = c("NA", "NA", "NA", "Avg", "Hot", "Cold", "Cold", "Avg", "Cold", "Cold", "Avg","Cold", "Cold", "Hot", "Hot")
 
-ggplot(varying_intercepts, aes(x = term, y = estimate, col = temp_anomaly)) +
-  geom_point() +
-  scale_color_manual(values = c("gray", "blue", "red", "black")) +
-  theme_classic()
+jpeg(filename = "plots/nested_models/year_re_tempColor.jpeg", units="in", width=5, height=3, res = 300)
+ggplot(varying_intercepts, aes(x = term, y = estimate)) +
+  geom_line(col = "light gray") +
+  geom_point(aes(col = temp_anomaly)) +
+  scale_color_manual(values = c("black", "blue", "red", "gray")) +
+  theme_classic() +
+  labs(title = "Year as Random Effect", x = "year", y = "coefficient")
+dev.off()
 
-AIC(m_age, m_age_cohort, m_age_cohort_re, m_age_year) # model with age and cohort as random effect was the best fit
+AIC(m_age, m_age_cohort, m_age_cohort_re, m_age_year_re, m_age_year_rw) # model with age and cohort as random effect was the best fit
+
+
+# Best fit ---------------------
+
+m_age_cohort_re_s = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + (1 | cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  spatiotemporal = "off",
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016)
+)
+
+m_age_cohort_re_st = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + (1 | cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "off",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016)
+  )
+
+m_age_cohort_re_s_st = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + (1 | cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "on",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997,
+                 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014,
+                 2016)
+)
+
+AIC(m_age_cohort_re_s_st, m_age_cohort_re_st, m_age_cohort_re_s, m_age_cohort_re)
+
+#save(m_age_cohort_re_s_st, file = "results/sdmTMB/cohortRE_s_st_model.RData")
+
