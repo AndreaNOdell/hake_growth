@@ -171,7 +171,7 @@ dev.off()
 AIC(m_age, m_age_cohort, m_age_cohort_re, m_age_year_re, m_age_year_rw) # model with age and cohort as random effect was the best fit
 
 
-# Best fit ---------------------
+# Best fit cohortRE ---------------------
 
 m_age_cohort_re_s = sdmTMB( 
   data = hake_sdmTMB_df,
@@ -212,4 +212,40 @@ m_age_cohort_re_s_st = sdmTMB(
 AIC(m_age_cohort_re_s_st, m_age_cohort_re_st, m_age_cohort_re_s, m_age_cohort_re)
 
 #save(m_age_cohort_re_s_st, file = "results/sdmTMB/cohortRE_s_st_model.RData")
+
+# Cohort smoother -------------
+hake_sdmTMB_df$cohort = as.integer(as.character(hake_sdmTMB_df$cohort))
+m_age_cohort_sm_s = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + s(cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  spatiotemporal = "off",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
+m_age_cohort_sm_st = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + s(cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "off",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
+m_age_cohort_sm_s_st = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + s(cohort),
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "on",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
+#save(m_age_cohort_sm_s_st, file = "results/sdmTMB/cohortsmoother_s_st_model.RData")
 
