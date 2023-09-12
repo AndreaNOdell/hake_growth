@@ -50,8 +50,9 @@ ylims <- c(32.5, 56)
 #                          hb_latitude = hake_weight_age_df$hb_latitude)
 
 # Generate a base map with the coastline:
+year_sampled = as.numeric(sort(unique(hake_weight_age_df$catch_year)))
 p0 <- ggplot() + 
-  geom_point(data = df[df$catch_year != 1986,], aes(x = (hb_longitude*-1), y = hb_latitude, color = omega_s), 
+  geom_point(data = df[df$catch_year %in% year_sampled,], aes(x = (hb_longitude*-1), y = hb_latitude, color = omega_s), 
              size = 0.8, shape = 15) +
   geom_path(data = dat.coast.wc, aes(x = long, y = lat, group = group), 
             color = "black", size = 0.25) + 
@@ -62,9 +63,9 @@ p0 <- ggplot() +
   scale_colour_gradient2(low = "red", mid = "white",  high = "blue") +
   #facet_wrap(~catch_year) +
   theme_classic()
-#jpeg(filename = "plots/sdmTMB/mapping/m4.st.stRE.jpeg")
 
-jpeg("plots/nested_models/spatialREmap.jpeg", units="in", width=5, height=5, res=300)
+
+jpeg("plots/nested_models/cohort_month_sex_model/spatialtrends.jpeg", units="in", width=8, height=8, res=300)
 p0
 dev.off()
 
