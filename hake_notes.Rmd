@@ -1070,8 +1070,8 @@ random effect. The random effect model was a better fit according to AIC
 smoother since the effect on cohort one year to the next might be
 correlated? Not sure. Maybe this data doesn't support that.
 
-![](plots/nested_models/cohort_random_effects.jpeg)
-![](plots/nested_models/cohort_smoother.jpeg)
+![](plots/nested_models/cohort_smoother_model/cohort_smoother.jpeg)
+![](plots/nested_models/cohortRE_model/cohort_random_effects.jpeg)
 
 For model 3, I tested the fit with year as a random effect and as a
 random walk. The random effect model was a slightly better fit (5 AIC).
@@ -1102,9 +1102,70 @@ Since I have identified `s(age) + (1 | cohort)` as the best supported model, I w
 
 For the spatiotemporal models, I tested both IID and AR1 processes. Of these models, the model with spatial and spatiotemporal (AR1) random effects was the best fitting model. 
 
-![](plots/nested_models/point_estimates.jpeg)
-![](plots/nested_models/residuals_spatial.jpeg)
+**Cohort as random effect**
 
-![](plots/nested_models/spatialREmap.jpeg)
+![](plots/nested_models/cohortRE_model/point_estimates.jpeg)
+
+sigma_O = spatial random field marginal variance  
+sigma_G = IID random intercept variance (cohort intercepts)  
+sigma_E = spatiotemporal random field marginal variance  
+rho = spatiotemporal AR1 correlation  
+phi = dispersion parameter for lognormal distribution  
 
 
+![](plots/nested_models/cohortRE_model/residuals_spatial.jpeg)
+
+![](plots/nested_models/cohortRE_model/spatialREmap.jpeg)
+
+**cohort as smoother**
+
+However, I wanted to explore the model that treated cohort as a smoother since we can expect the cohort effects may exhibit some autocorrelation.
+
+![](plots/nested_models/cohort_smoother_model/point_estimates.jpeg)
+![](plots/nested_models/cohort_smoother_model/residuals_spatial.jpeg)
+
+![](plots/nested_models/cohort_smoother_model/spatialREmap.jpeg)
+
+![](plots/nested_models/cohort_smoother_model/spatiotemporaltrends.jpeg)
+
+**Meeting w/ Kristin 08/22/23**
+
+- Include month effect in the model - remove seasonal pattern in sampling design from the model 
+    - Is it best to include? Think about it!
+- prediction grid - check mike malick code
+    - look for helper functions to create a coarser grid
+
+
+### September 2023
+
+**Adding month and sex effects**
+
+Adding month as a linear predictor was a better fit to the data according to AIC and also reduced the unexplained spatial variance which we would expect. Because of this, the remaining spatial trends (a SD of only 0.03) revealed stronger spatial patterning as seen before. 
+
+`weight ~ s(age) + s(cohort) + catch_month`
+
+![](plots/nested_models/cohort_month_model/spatialtrends.jpeg)
+
+When adding sex effects, there are two approaches that I thought would be fair to take. To handle sex as a linear predictor, or to allow the smoother on age to interact with sex. For the interaction on smoother, I specify a "by" variable which generates an indicator vector for each level of the factor (male and female). Basically, each factor level, male and female, will have its own smooth. One thing to note, though, is that because centering constraints are applied to the smooths, we should include the by variable as a parametric term. But it wouldn't converge haha. 
+
+In order to do this, I needed to make some minor changes to the dataset. There were 138 unsexed observations out of 35,348 (< 1%) and about 90% of these observations are in early age classes (0 and 1). So, I randomly assigned male and female at a 50/50 probability following the assumption that negligible sex-specific mortality has yet occurred and sex-ratio for juveniles are 1:1 (Zamora Garcia et al. 2020). I opted for these changes, as opposed to dropping the unsexed observations from the dataset, because they make a decent portion of the age-0 class which may drive the structure of the weight-at-age curve.
+
+`weight ~ s(new_age) + s(cohort) + catch_month + sex_complete`
+
+`weight ~ s(new_age, by = sex_complete) + s(cohort) + catch_month + sex_complete`
+
+
+AIC model comparison indicates that sex as a linear predictor is a better fit to the data. Adding sex as a linear predictor didn't change any of the spatial trends, as we might expect. However, the confidence interval around the spatial SD is quite large but it does not overlap with 0. 
+
+![](plots/nested_models/cohort_month_sex_model/point_estimates.jpeg)
+
+**Prediction  Grid**
+
+I created a dataset with all the unique year, age, cohort, month, and sex combinations. This led to ~850 unique combinations. I then extracted all of the unique spatial coordinates in which data was collected aggregated across all years. This was ~1000 unique combinations. I merged these datasets together such that each unqiue year, age, ..., sex combination was paired with all the unique coordinates, expanding the prediction grid to ~860,000 points. Not sure if this was correct 
+
+
+To do:
+
+- take all the non-spatial covariate without the spatial RE and spatiotemporal RE and sequentially add them in
+- pred_grid - use malick code to create a coarse spatial grid
+    - make sure the coordinates and zone aligns 
