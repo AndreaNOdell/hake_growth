@@ -10,8 +10,7 @@ library(visreg)
 # setup -------------
 # create spatial dataframe
 hake_sdmTMB_df = hake_weight_age_df %>% 
-  dplyr::select(new_age, weight, catch_year, catch_month, cohort, length, distance_fished, sex_description,
-                hb_longitude, hb_latitude) 
+  dplyr::select(new_age, weight, catch_year, catch_month, cohort, length, distance_fished, sex_description, hb_longitude, hb_latitude) 
 hake_sdmTMB_df$hb_longitude = -1 * hake_sdmTMB_df$hb_longitude
 hake_sdmTMB_df = st_as_sf(hake_sdmTMB_df, coords = c("hb_longitude", "hb_latitude"))
 st_crs(hake_sdmTMB_df) = 4269
@@ -21,11 +20,26 @@ coords = coords/1000
 hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords, 
                                      hb_latitude = hake_weight_age_df$hb_latitude,
                                      hb_longitude = hake_weight_age_df$hb_longitude))
+# assign male and female to unassigned sexes. sampled randomly. Because these are earlier age classes, I assume a 50/50 chance of each - reasonable to assume that negligible sex-specific mortality has not yet occurred.
+
+hake_sdmTMB_df = hake_sdmTMB_df %>% 
+  mutate(sex_complete = sex_description) 
+hake_sdmTMB_df[hake_sdmTMB_df$sex_complete == "Unknown/Not determined" ,]$sex_complete <- sample(c("Male", "Female"), length(hake_sdmTMB_df[hake_sdmTMB_df$sex_complete == "Unknown/Not determined" ,]$sex_complete), prob = c(0.5, 0.5), replace = TRUE)
+
 
 # Set data class as appropriate
 #hake_sdmTMB_df$catch_month = as.factor(hake_sdmTMB_df$catch_month)
 hake_sdmTMB_df$catch_year = as.integer(as.character(hake_sdmTMB_df$catch_year))
 hake_sdmTMB_df$cohort = as.factor(hake_sdmTMB_df$cohort)
+hake_sdmTMB_df$sex_complete = as.factor(hake_sdmTMB_df$sex_complete)
+
+# create mesh
+mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 30)
+plot(mesh)
+# ggplot() +
+#   inlabru::gg(mesh$mesh) +
+#   geom_point(data = hake_sdmTMB_df, aes(x = X, y = Y, col = n)) +
+#   coord_equal()
 
 # visualize weight data
 jpeg(filename = "plots/data_exploration/weight_data_hist.jpeg", units="in", width=6, height=3, res = 300)
@@ -34,13 +48,13 @@ hist(hake_sdmTMB_df$weight, main = "hist. of weight")
 hist(log(hake_sdmTMB_df$weight), main = "hist of log weight")
 dev.off()
 
-# create mesh
-mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 10)
-plot(mesh)
-# ggplot() +
-#   inlabru::gg(mesh$mesh) +
-#   geom_point(data = hake_sdmTMB_df, aes(x = X, y = Y, col = n)) +
-#   coord_equal()
+# visualize sex differences
+jpeg(filename = "plots/data_exploration/weight-at-age_by_sex.jpeg", units="in", width=6, height=3, res = 300)
+ggplot(hake_sdmTMB_df, aes(x = new_age, y = weight, col = sex_description)) +
+  geom_jitter(alpha = 0.5)
+dev.off()
+
+
 
 # Pairwise covariate model exploration-----------------------------------
 
@@ -223,7 +237,8 @@ m_age_cohort_sm_s = sdmTMB(
   spatial = "on",
   spatiotemporal = "off",
   control = sdmTMBcontrol(newton_loops = 1),
-  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+  #extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016)
+  )
 
 m_age_cohort_sm_st = sdmTMB( 
   data = hake_sdmTMB_df,
@@ -249,3 +264,64 @@ m_age_cohort_sm_s_st = sdmTMB(
 
 #save(m_age_cohort_sm_s_st, file = "results/sdmTMB/cohortsmoother_s_st_model.RData")
 
+
+
+# Month and Sex effects -------
+
+hake_sdmTMB_df$cohort = as.integer(as.character(hake_sdmTMB_df$cohort))
+m_age_month_cohort = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + s(cohort) + catch_month,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "on",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
+#save(m_age_month_cohort, file = "results/sdmTMB/m_age_month_cohort.RData")
+
+
+m_age_month_cohort_sex = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + s(cohort) + catch_month + sex_complete,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "on",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
+hake_sdmTMB_df$sex_complete = as.factor(hake_sdmTMB_df$sex_complete)
+m_age_month_cohort_sex_insmooth = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age, by = sex_complete) + s(cohort) + catch_month,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "on",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
+#save(m_age_month_cohort_sex, file = "results/sdmTMB/m_age_month_cohort_sex.RData")
+
+m_age_month_cohort_sex_sp_only = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + s(cohort) + catch_month + sex_complete,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "on",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
+m_age_month_cohort_sex_no_sp_st = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age) + s(cohort) + catch_month + sex_complete,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  spatial = "off",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
