@@ -16,7 +16,7 @@ hake_sdmTMB_df = st_as_sf(hake_sdmTMB_df, coords = c("hb_longitude", "hb_latitud
 st_crs(hake_sdmTMB_df) = 4269
 hake_sdmTMB_df = st_transform(hake_sdmTMB_df, 32610)
 coords =  st_coordinates(hake_sdmTMB_df)
-coords = coords/1000
+coords = coords/1000 #convert to km
 hake_sdmTMB_df = as.data.frame(cbind(hake_sdmTMB_df, coords, 
                                      hb_latitude = hake_weight_age_df$hb_latitude,
                                      hb_longitude = hake_weight_age_df$hb_longitude))
@@ -34,7 +34,7 @@ hake_sdmTMB_df$cohort = as.factor(hake_sdmTMB_df$cohort)
 hake_sdmTMB_df$sex_complete = as.factor(hake_sdmTMB_df$sex_complete)
 
 # create mesh
-mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 30)
+mesh <- make_mesh(hake_sdmTMB_df, xy_cols = c("X", "Y"), cutoff = 10)
 plot(mesh)
 # ggplot() +
 #   inlabru::gg(mesh$mesh) +
@@ -269,6 +269,22 @@ m_age_cohort_sm_s_st = sdmTMB(
 # Month and Sex effects -------
 
 hake_sdmTMB_df$cohort = as.integer(as.character(hake_sdmTMB_df$cohort))
+hake_sdmTMB_df = hake_sdmTMB_df %>% 
+  mutate(new_age_cent = new_age - mean(new_age),
+         cohort_cent = cohort - mean(cohort),
+         catch_month_cent = catch_month - mean(catch_month))
+
+m_age_month_cohort_cent = sdmTMB( 
+  data = hake_sdmTMB_df,
+  formula = weight ~ s(new_age_cent) + s(cohort_cent) + catch_month_cent,
+  mesh = mesh, 
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "on",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016))
+
 m_age_month_cohort = sdmTMB( 
   data = hake_sdmTMB_df,
   formula = weight ~ s(new_age) + s(cohort) + catch_month,
