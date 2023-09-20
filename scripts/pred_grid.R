@@ -19,11 +19,11 @@ dat = model$data
 pred <- predict(model)
 
 # Gather unique combinations of covariates
-dat$year_age_cohort_month_sex <- as.factor(paste(dat$catch_year, dat$new_age, dat$cohort, dat$catch_month)) #, dat$sex_complete
+dat$year_age_cohort_month_sex <- as.factor(paste(dat$catch_year, dat$new_age, dat$cohort, dat$catch_month)) #, dat$sex_complete, dat$X, dat$Y
 
 # Create spatial grid
 grid_pred_full <- pred_grid(x = dat$X*1000, y = dat$Y*1000,
-                            res =20e3, plot = FALSE)
+                            res =5e3, plot = FALSE)
 names(grid_pred_full) <- c("easting_m", "northing_m")
 grid_pred_full$cell_id <- 1:nrow(grid_pred_full)
 plot(grid_pred_full$easting_m, grid_pred_full$northing_m)
@@ -53,7 +53,8 @@ df$catch_year <- as.numeric(unlist(lapply(strsplit(as.character(df$year_age_coho
 df$new_age <- as.numeric(unlist(lapply(strsplit(as.character(df$year_age_cohort_month_sex), " "), getElement, 2)))
 df$cohort <- unlist(lapply(strsplit(as.character(df$year_age_cohort_month_sex), " "), getElement, 3))
 df$catch_month <- unlist(lapply(strsplit(as.character(df$year_age_cohort_month_sex), " "), getElement, 4))
-#df$sex_complete <- unlist(lapply(strsplit(as.character(df$year_age_cohort_month_sex), " "), getElement, 5))
+#df$X <- unlist(lapply(strsplit(as.character(df$year_age_cohort_month_sex), " "), getElement, 5))
+#df$Y <- unlist(lapply(strsplit(as.character(df$year_age_cohort_month_sex), " "), getElement, 6))
 df$cell = 1:nrow(df)
 
 # now expand the spatial grid so there's all the spatial info for each cell of the df
@@ -73,88 +74,80 @@ pred_grid$catch_year <- as.numeric(pred_grid$catch_year)
 #pred_grid$X <- as.numeric(pred_grid$X)
 #pred_grid$Y <- as.numeric(pred_grid$Y)
 
-pred_out <- predict(m_age_month_cohort, newdata = pred_grid, return_tmb_object = FALSE)#, se_fit = TRUE)
+pred_out <- predict(model, newdata = pred_grid, return_tmb_object = FALSE)#, se_fit = TRUE)
+coords = cbind(pred_out$X, pred_out$Y)
+sputm <- SpatialPoints(coords, proj4string=CRS("+proj=utm +zone=10 +datum=WGS84 +units=km"))
+spgeo <- as.data.frame(spTransform(sputm, CRS("+proj=longlat +datum=WGS84")))
+coords = cbind(as.data.frame(sputm), spgeo)
+names(coords) = c("X_test", "Y_test", "hb_longitude", "hb_latitude")
+pred_out = cbind(pred_out, coords[,3:4]) 
 
-# Index for entire spatial domain
+# Index  ----------------
+# Whole spatial domain
 years_sampled = sort(unique(hake_weight_age_df$catch_year))
-pred_sims <- predict(m_age_month_cohort, newdata = pred_grid, return_tmb_object = TRUE)
-index_sims = get_index(pred_sims, bias_correct = TRUE)
+pred_sims <- predict(model, newdata = pred_grid, return_tmb_object = TRUE)
+index_sims = get_index(pred_sims)
 index_sims = index_sims %>% 
   filter(catch_year %in% years_sampled) %>% 
   mutate(region = "All")
 
-# Compare Index between Canada and US
+n_peryear = pred_grid %>% 
+  filter(catch_year %in% years_sampled) %>% 
+  group_by(catch_year) %>% 
+  summarise(n = n()) %>% 
+  mutate(region = "All")
+
+
+#  Canada
 pred_grid_north =  pred_grid %>% 
-  filter(X > 217.938)  # 217.938 is the UTM coordinate associated with 49 latitude
-pred_sims_north = predict(m_age_month_cohort, newdata = pred_grid_north, return_tmb_object = TRUE)
+  filter(Y > 5437.8)  # 547 is the UTM coordinate associated with 49 latitude
+pred_sims_north = predict(model, newdata = pred_grid_north, return_tmb_object = TRUE)
 index_sims_north = get_index(pred_sims_north)
 index_sims_north = index_sims_north %>% 
   filter(catch_year %in% years_sampled) %>% 
   mutate(region = "Canada")
 
+n_peryear_north = pred_grid_north %>% 
+  filter(catch_year %in% years_sampled) %>% 
+  group_by(catch_year) %>% 
+  summarise(n = n()) %>% 
+  mutate(region = "Canada")
+
+# USA
 pred_grid_south = pred_grid %>% 
-  filter(X < 217.938) 
-pred_sims_south = predict(m_age_month_cohort, newdata = pred_grid_south, return_tmb_object = TRUE)
+  filter(Y < 5437.8) 
+pred_sims_south = predict(model, newdata = pred_grid_south, return_tmb_object = TRUE)
 index_sims_south = get_index(pred_sims_south) 
 index_sims_south = index_sims_south %>% 
   filter(catch_year %in% years_sampled) %>% 
   mutate(region = "USA")
 
+n_peryear_south = pred_grid_south %>% 
+  filter(catch_year %in% years_sampled) %>% 
+  group_by(catch_year) %>% 
+  summarise(n = n()) %>% 
+  mutate(region = "USA")
+
 index_sims_full = rbind(index_sims, index_sims_north, index_sims_south)
+n_peryear_full = rbind(n_peryear, n_peryear_north, n_peryear_south)
+index_final = left_join(index_sims_full, n_peryear_full) %>% 
+  mutate(est_weight = est/n, lwr_weight = lwr/n, upr_weight = upr/n)
+
+#save(index_final, file = "results/sdmTMB/index_final-m_age_month_cohort.RData")
+
 
 # plot the weight index by region
 jpeg(filename = "plots/output_exploration/weight_index.jpeg", units="in", width=6, height=4, res = 300)
-ggplot(index_sims_full, aes(x = catch_year, y = est)) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr, fill = region), alpha = 0.4) +
+ggplot(index_final, aes(x = catch_year, y = est_weight)) +
+  geom_ribbon(aes(ymin = lwr_weight, ymax = upr_weight, fill = region), alpha = 0.4) +
   geom_line(aes(color = region)) +
   theme_classic()
 dev.off()
 
 
 
-#save(pred_out, file = "results/sdmTMB/pred_out.RData")
-pred_out %>% 
-ggplot(aes(catch_year, exp(est))) + 
-  geom_point() + 
-  xlab("Year effects") + 
-  ylab("not sure") + 
-  theme_bw() 
 
 
-# First run Malick's Code to create base spatial grid
 
-year_vector = min(sort(as.numeric(unique(hake_weight_age_df$catch_year)))):max(sort(as.numeric(unique(hake_weight_age_df$catch_year))))
 
-month_vector = sort(as.numeric(unique(hake_weight_age_df$catch_month)))
 
-age_vector = sort(as.numeric(unique(hake_weight_age_df$new_age)))
-
-cohort_vector = sort(as.numeric(unique(hake_weight_age_df$cohort)))
-
-grid_pred$catch_year = year_vector[1]
-grid_pred_sdm = grid_pred
-for(i in 2:length(year_vector)) { # add years
-  grid_pred$catch_year = year_vector[i]
-  grid_pred_sdm = rbind(grid_pred_sdm, grid_pred)
-}
-
-grid_pred_sdm$catch_month = month_vector[1] # add month
-grid_pred_sdm_full = grid_pred_sdm
-for(i in 2:length(month_vector)) { 
-  grid_pred$catch_month = month_vector[i]
-  grid_pred_sdm_full = rbind(grid_pred_sdm_full, grid_pred_sdm)
-}
-
-grid_pred_sdm_full$new_age = age_vector[1] # add age
-grid_pred_sdm_full2 = grid_pred_sdm_full
-for(i in 2:length(age_vector)) { 
-  grid_pred_sdm_full$new_age = age_vector[i]
-  grid_pred_sdm_full2 = rbind(grid_pred_sdm_full2, grid_pred_sdm_full)
-}
-
-grid_pred_sdm_full2$cohort = cohort_vector[1] # add cohort
-grid_pred_sdm_full3 = grid_pred_sdm_full2
-for(i in 2:length(cohort_vector)) { 
-  grid_pred_sdm_full2$cohort = cohort_vector[i]
-  grid_pred_sdm_full3 = rbind(grid_pred_sdm_full3, grid_pred_sdm_full2)
-}
