@@ -7,13 +7,15 @@ library(sdmTMB)
 library(visreg)
 library(ggpubr)
 library(ggbreak)
+library(kableExtra)
 
 load("results/hake_weight_age_df.RData")
 
-load("results/sdmTMB/m_age_month_cohort_sex.RData")
+load("results/sdmTMB/m_age_month_cohort.RData")
+load("results/sdmTMB/cohortsmoother_s_st_model.RData")
 
 
-model = m_age_month_cohort_sex
+model = m_age_month_cohort
 df = model$data
 
 # model diagnostics
@@ -22,15 +24,17 @@ df$residuals <- residuals(model) # randomized quantile residuals
 predict_df = predict(model)
 df = cbind(df, predict_df[,(ncol(predict_df)-3):ncol(predict_df)])
 
+
 # Residuals ---------------
-jpeg(filename = "plots/nested_models/cohort_month_model/residuals_spatial.jpeg", units="in", width=5, height=5, res = 300)
-ggplot(df, aes(X, Y, col = residuals)) +
+jpeg(filename = "plots/output_exploration/residuals_peryear_spatial.jpeg", units="in", width=5, height=5, res = 300)
+ggplot(df[df$catch_year %in% year_sampled,], aes(X, Y, col = residuals)) +
   scale_colour_gradient2() +
   geom_point() +
   #facet_wrap(~catch_year) +
   coord_fixed() +
   labs(title= "model residuals") +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme_classic()
 dev.off()
 
 # Data trends in weight by age --------------
@@ -100,6 +104,12 @@ coefs %>%
   labs(y = "coefficient", subtitle = "point estimates with confidence intervals")
 dev.off()
 
+options(knitr.kable.NA = '')
+kbl(coefs, align = "c") %>%
+  kable_classic_2(full_width = F) %>% 
+  #add_header_above(data.frame("centered data",6), monospace = TRUE) %>%
+save_kable(file = "plots/output_exploration/coefficient_table.jpeg", zoom = 4)
+
 
 # Cohort Random Effects intercepts ----------
 year_sampled = as.numeric(sort(unique(hake_weight_age_df$catch_year))) # specify extra time vector
@@ -119,8 +129,8 @@ ggplot(varying_intercepts, aes(x = term, y = estimate)) +
 dev.off()
 
 # cohort smoother ----------
-jpeg(filename = "plots/nested_models/cohort_smoother_model/cohort-s-st-smoother.jpeg", units="in", width=5, height=4, res = 300)
-visreg::visreg(m_age_cohort_sm_s_st, xvar = "cohort", xlim = c(1980, 2015), ylim = c(-5, 5))
+jpeg(filename = "plots/output_exploration/cohort_GAM.jpeg", units="in", width=5, height=4, res = 300)
+visreg::visreg(model, xvar = "cohort", xlim = c(1980, 2017), ylim = c(-5, 5), data = model$data)
 dev.off()
 
 jpeg(filename = "plots/nested_models/cohort_smoother_model/cohort-GAM-scaled.jpeg", units="in", width=4, height=3, res = 300)
@@ -129,12 +139,12 @@ visreg::visreg(m_age_cohort_sm_s_st, xvar = "cohort",
 #title(main = "cohort smoothed function")
 dev.off()
 
-jpeg(filename = "plots/nested_models/cohort_smoother_model/new_age-s-st-smoother.jpeg", units="in", width=5, height=4, res = 300)
-visreg::visreg(m_age_cohort_sm_s_st, xvar = "new_age", xlim = c(0, 15), ylim = c(-7, 7))
+jpeg(filename = "plots/output_exploration/age_GAM.jpeg", units="in", width=5, height=4, res = 300)
+visreg::visreg(model, xvar = "new_age", xlim = c(0, 15), ylim = c(-7, 7))
 dev.off()
 
 jpeg(filename = "plots/nested_models/cohort_smoother_model/age-GAM-scaled.jpeg", units="in", width=4, height=3, res = 300)
-visreg::visreg(m_age_cohort_sm_s_st, xvar = "new_age", 
+visreg::visreg(model, xvar = "new_age", 
                xlim = c(0, 15), ylim = c(-0.5, 3), scale = "response")
 dev.off()
 
@@ -162,3 +172,8 @@ ggplot(index_avg_sim, aes(x = catch_year, y = est)) +
   #                                                shape = c(NA,NA,NA,NA,NA,16),
   #                                                alpha = rep(0.8, 6),
   #                                                color = pal)))
+
+
+
+
+est <- as.list(model$sd_report, "Est")
