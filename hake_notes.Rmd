@@ -501,7 +501,7 @@ intervals?
     can gain inspiration from?
 -   proposed research questions
 
-**Meeting with Kristin** ]
+**Meeting with Kristin** 
 
 -   what makes weight at age different from recruitment? there is no
     real way to put an environmental driver into stock assessment since
@@ -1169,3 +1169,185 @@ To do:
 - take all the non-spatial covariate without the spatial RE and spatiotemporal RE and sequentially add them in
 - pred_grid - use malick code to create a coarse spatial grid
     - make sure the coordinates and zone aligns 
+    
+
+![](plots/data_exploration/month_map.jpeg)
+Month covariate acts as a proxy of seasonal, size-structured migration. 
+    
+How to deal with unequal sample sizes for month? Shouldn't do random effect because too few categories.
+
+**Notes from sdmTMB workshop recording**
+
+- range (matern): distance at which points are effectively independent
+- sigma_o (spatial SD): magnitude of spatial decay
+
+
+
+
+I revisited the models and decided to omit sex as a covariate. It was causing issues in estimating the spatial RE while also not reducing the estimate of dispersion of the error distribution. So now moving forward I am using `weight ~ s(new_age) + s(cohort) + catch_month + omega_s + epsilon_st`. 
+
+I still can't sort out how to interpret some of the coefficients. I tried centering the data so that I can interpret the intercept as the expected weight when all covariates are set to their mean, but the intercept is still negative. 
+
+![](plots/output_exploration/coefficient_table.jpeg)
+
+![](plots/output_exploration/coefficient_table_cent.jpeg)
+
+I ran the non-centered model with the prediction grid I created. The prediction grid consists of each unique age, year, month, cohort combination at each spatial location (537,372 spatial points). 
+
+The spatial and spatiotemporal random effects fields look great.
+
+![](plots/output_exploration/spatialRE_map.jpeg)
+
+![](plots/output_exploration/spatiotemporalRE_map.jpeg)
+
+However, we can't explore the predictions (estimate, non RE estimate, RE estimates) because all of the data is available at each spatial location so the estimates are stacked on top of each other.
+
+![](plots/output_exploration/estimate_map.jpeg)
+
+
+Also, here's a look at the effect of month and year on the predicted weight. 
+
+![](plots/output_exploration/month_effect.jpeg)
+
+![](plots/output_exploration/year_effect.jpeg)
+
+![](plots/output_exploration/cohort_effect.jpeg)
+
+![](plots/output_exploration/age_effect.jpeg)
+
+
+The index of weight across years for the whole spatial domain and split between USA and Canada.
+
+![](plots/output_exploration/weight_index.jpeg)
+
+The prediction grid used to create this index is essentially a unique combination of all covariates made available at each spatial loaction. So, the index now looks similar between the USA and Canada since the data available in each country is the same. 
+
+
+![](plots/output_exploration/observed_weight_histogram.jpeg)
+
+![](plots/output_exploration/predicted_weight_histogram.jpeg)
+
+
+**Revisiting GAMs**
+
+- The GAM in my model uses a thin plate regression spline. This approach is often considered universally optimal and does not require the user to specify the number of knots used to estimate the spline. This minimizes the knot placement and selection issue that is more common in other penalizing approaches. It instead uses a truncated eigen decomposition to achieve rank reduction.   
+- I tried cubic regression spline as well, varying the number of knots. However, this approach did not seem to support the data visually, often with wiggliness occurring where it is biologically irrelevant.
+- I created plots of the GAMs, in both the original format (scaled to the linear predictor which is better for observing model fit and outliers) and scaled to the response variable (better for communicating model results) 
+
+![](plots/output_exploration/GAM.jpeg)
+
+![](plots/output_exploration/GAM-response_scaled.jpeg)
+
+The above plots are for the model using a log-link lognormal error structure. The log link means that we transform the systematic function (i.e. the predictors) by taking the log of it. If X is the systematic function, it would be log(X), so the linear predictors are exponentiated.
+
+I also tested the model with a log-link gamma error structure because looking at the histogram of predicted weights against the observations, it looked like the gamma did a better job capturing the lighter weights and the log of the weights had a left-skew which is also better captured by a gamma distribution. I also tried taking the log of weights and fitting a gamma distribution to it, but because of the gamma and lognormal distribution requirement for data to be positive, I did not pursue this path further. 
+
+![](plots/output_exploration/gamma_vs_log_histogram.jpeg)
+
+
+**Revisiting Index**
+
+Because of the way the index was generated, the indices between Canada and USA were very similar (see notes above). So, I wanted to try to make the predictions grid more characteristic of what we would see in the natural world. So, when I created the prediction grid, I split the observations between USA and Canada, expanded each countries unique combination of data to the spatial locations available in each country, and then merged the two predictions grids. That way, the unique combinations in that country were available in that country only. This resulted in the index below -
+
+![](plots/output_exploration/weight_index_datasplit.jpeg)
+
+**PICES presentation title**
+- Spatiotemporal trends in weight and its potential implications for stock assessments
+- Spatiotemporal trends in weight and its potential implications for empirical weight at age
+
+-------------
+
+**Adding sex back into the model**
+I was previously having issues fitting sex into the model. Turns out my mesh was way too small (cutoff = 10km) and causing convergence issues. So, I decreased the resolution of the mesh and tried a few different sizes (cutoff = 20, 30, 50). With 20 and 30, the outputs were fairly similar. With 50, the range increased pretty dramatically and some of the coefficients shifted a bit. I think the cutoff value of 50 might be too large and not allowing the model to accurately estimate the range. The model with 20km cutoff size was a better fit to the data, but it did increase run time. So I decided to settle with cutoff = 30. 
+
+With cutoff = 30, I fit the model with no spatial or spatiotemporal RE, with only spatial RE, with only spatiotemporal RE, and with both spatial and spatiotemporal random effects.
+
+The model with only spatiotemporal RE was the best fitting model, beating the model with spatial and spatiotemporal RE by just 2 AIC values. The spatial and spatiotemporal RE model did not converge well and had a hard time estimating the spatial SD, which was very small anyway. 
+
+
+### October 2023
+
+Below are some figures of the predictions from the spatiotemporal only model. I added sex back in as a by factor in the age GAM. 
+
+**spatiotemporal random effects** - this plot shows the spatiotemporal random effects across the whole spatial domain
+
+![](plots/updated_output_exploration/spatiotemporalRE_map.jpeg)
+
+**Year and Cohort Anomalies** - This plot shows the weight anomalies for a given age. On the x-axis, we have year effects which visualize impacts along vertical slice. So, years 1998 and 2007 had lighter than the average individuals in that age class across all cohorts. On the y-axis is the cohort effect, whuich visualize impact along a horizontal slice. For example, 2007 and 2008 cohorts remain fairly small across years, while 1998 cohort remains fairly large with the exception of 2005 and 2007 overall smaller fish. 
+![](plots/updated_output_exploration/Year_Cohort_Anomalies_Female.jpeg)
+
+![](plots/updated_output_exploration/Year_Cohort_Anomalies_Male.jpeg)
+
+
+I have also fit a statistical model to the fishery data. I started off with just age as a predictor and it did not converge. I tested out a number of models 1) sex as a by factor in age gam 2) sex as a linear predictor 3) smoother on cohort 4) smoother on month 5) year as random effect. I also tried adding country as a categorical predictor but it did not work - the undefined sex factor is characteristic of the entire canadian fishery, and so I think sex is already capturing the difference seen in Canada.
+
+The model I settled on was `weight ~ s(new_age, by = sex_description) + s(cohort) + sex_description + s(catch_month) + (1 | fcatch_year)` which was ~10K AIC values less than the next best fit model.
+
+**Fishery data exploration**
+
+
+![](plots/data_exploration/fishery_data/samplesize_by_country.jpeg)
+
+![](plots/data_exploration/fishery_data/avg_weight-at-age_timeseries.jpeg)
+
+![](plots/data_exploration/fishery_data/cohort_weight-at-age.jpeg)
+
+
+**fishery vs survey data**
+
+![](plots/updated_output_exploration/combined/year_cohort_anomalies.jpeg)
+
+Below is the predicted weight-at-age between the two sources of data for 1986 and on. There is no survey data previous to 1986 and the fishery data reveals much heavier than average fish in those early years which had driven differences between the fishery and survey (see next plots below)
+
+![](plots/updated_output_exploration/combined/weight-at-age_data-source.jpeg)
+
+Limited differences potentially due to the fishing methods used (trawls are fairly unselective) and the fact that the fisheries operate largely during the summer (when survey operates) which might limit seasonal variation between the two data sources.
+
+![](plots/data_exploration/fishery_data/samplesize_by_country.jpeg)
+
+Here is the predicted weight-at-age for all years combined
+
+![](plots/updated_output_exploration/combined/weight-at-age_data-source_allyears.jpeg)
+
+and as you can see from this timeseries of weights for a 10 year old between the data sources, the fishery data in the early years reveal much heavier than average individuals
+
+![](plots/updated_output_exploration/combined/10yoWeightTimeseries_DataSource.jpeg)
+
+![](plots/updated_output_exploration/combined/cohort_anomalies_timeseries.jpeg)
+
+**Differences in weight-at-age are seen between countries**
+
+![](plots/updated_output_exploration/combined/weight-at-age_data-source_country.jpeg)
+
+
+**Differences seen by sex **
+
+![](plots/updated_output_exploration/combined/weight-at-age_sex.jpeg)
+
+The unsexed fish in this case come solely from the Canadian Fishery. At first glance, it may seem like the Canadian fishery (i.e. unsexed) catches mostly females based off of the weight-at-age curve. When we look further into the unsexed weight-at-age curve adn split the data by country, we see that the unsexed weight-at-age follow the Canadian females closely. This could mean that the Canadian Fishery may be catching proportionally more females, or it could mean they just happen to be catching really large males. 
+
+![](plots/updated_output_exploration/combined/weight-at-age_sex_country.jpeg)
+
+
+![](plots/updated_output_exploration/combined/cohort_anomalies_timeseries.jpeg)
+
+*Check sample size in each variable (cohort x year)*
+
+**Differences between model predictions and current EWAA**
+
+Below are the heatmaps for the currently used empirical weight at age from the hake assessment github
+
+![](plots/EWAA_comparison/EWAA-heatmap.jpeg)
+
+and here's a similar heatmap but using the predictions from the fishery and survey models. I pooled together all of the predictions from both the models. I did not apply any weight to either. The survey predictions dataset was MUCH larger than the fishery predictions dataset due to the fact that the survey data was expanded spatially and the fishery data was not. Once the data was pooled, I grouped by age and year and simply took the average to create the empirical weight-at-age. 
+
+![](plots/EWAA_comparison/predictedEWAA-heatmap.jpeg)
+
+Below is now the matrix showing the deviations between predictions and the observations (i.e. the two heat maps). 
+
+![](plots/EWAA_comparison/ewaa_anomalies.jpeg)
+
+
+Also created this fun map which shows how the survey spatial coverage changes from year to year. Some years miss Canada, which means they're missing larger fish and potentially skewing the ewaa toward lighter weight-at-age fish. I still need to add the year labels...
+
+![](plots/data_exploration/observation_map_by_year.jpeg)
