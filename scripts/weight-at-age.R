@@ -15,7 +15,7 @@ hake_df = df %>% # make new dataframe with relevant information only
   dplyr::filter(scientific_name == "Merluccius productus") %>% 
   dplyr::select("age", "avg_weight", "distance_fished", #"hb_date", 
          "length", "sex_description", "weight", "catch_modified_date",
-         "eq_date", "hb_date", 'hb_latitude', 'hb_longitude') %>% 
+         "eq_date", "hb_date", 'hb_latitude', 'hb_longitude', "haul_num", "duration") %>% 
   tidyr::separate(col = eq_date , into = c('date', 'time'), sep = " ", remove = FALSE) %>% 
   tidyr::separate(col = date, into = c("catch_year", "catch_month", 'catch_day'), sep = "-")
 
