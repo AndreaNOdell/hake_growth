@@ -371,9 +371,14 @@ fishery_df %>%
   #geom_errorbar(aes(ymax = avg + sd, ymin = avg - sd, col = as.factor(country))) +
   theme_classic()
 
-# higher catches in the summer when the fish are more northward (maybe model as a GAM?). 
+# higher catches in the summer when the fish are more northward (maybe model as a GAM?).
 
-jpeg("plots/data_exploration/fishery_data/samplesize_by_country.jpeg", units="in", width=6, height=4, res=300)
+View(fishery_df %>% 
+  filter(catch_month %in% c(12,1,2,3)) %>% 
+  group_by(Source, country, catch_month, catch_year) %>% 
+  summarise(n = n()))
+
+jpeg("plots/data_exploration/fishery_data/samplesize_by_country.jpeg", units="in", width=12, height=7, res=600)
 ggplot(fishery_df, aes(x = catch_month, group = country)) +
   geom_bar(aes(fill = country)) +
   theme_classic()
@@ -486,3 +491,27 @@ fm_age_sex_month_yearre = sdmTMB(
 # the model with cohort, year, age, sex, and month is the best model by FAR (at the very least, 10k AIC values)
 
 #  save(fm_age_sex_cohort_month_yearre, file = "results/sdmTMB/fm_age_sex_cohort_month_yearre.RData")
+
+
+
+# data exploration --------------
+fishery_year = fishery_df %>% 
+  group_by(catch_month, country) %>% 
+  summarise(n = n()) %>% 
+  mutate(source = "fishery")
+
+survey_year = hake_sdmTMB_df %>% 
+  group_by(catch_month) %>% 
+  summarise(n = n()) %>% 
+  mutate(source = "survey")
+
+data_year = as.data.frame(rbind(fishery_year, survey_year))
+jpeg(filename = "plots/data_exploration/data_availability_month.jpeg", units="in", width=8, height=3, res = 300) 
+ggplot(data_year, aes(x = as.factor(catch_month), y = source)) +
+  geom_point(aes(size = n, fill = source), shape = 21, col = "black") +
+  theme_classic() +
+  labs(x = "Month", y  = "", size = "sample size") +
+  scale_fill_manual(values=c("#6e7cb9", "#d2848d")) +
+  theme(legend.position = "none",
+        axis.text.y = element_text(size = 12))
+dev.off()
