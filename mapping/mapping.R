@@ -49,25 +49,38 @@ ylims <- c(32.5, 56)
 #                          hb_longitude = hake_weight_age_df$hb_longitude, 
 #                          hb_latitude = hake_weight_age_df$hb_latitude)
 
+year_index = as.data.frame(cbind(catch_year = year_sampled, year_index = (length(year_sampled)-1):0))
+hake_sdmTMB_df = left_join(hake_sdmTMB_df, year_index)
+hake_sdmTMB_df = hake_sdmTMB_df %>% 
+  mutate(long_for_data_map = hb_longitude - (year_index * 4))
+
+
+library(PNWColors)
+
 # Generate a base map with the coastline:
-year_sampled = as.numeric(sort(unique(hake_weight_age_df$catch_year)))
-p0 <- ggplot() + 
-  geom_point(data = pred_out[pred_out$catch_year %in% year_sampled,], aes(x = hb_longitude, y = hb_latitude, color = omega_s), 
-             size = 0.8, shape = 15) + 
-  geom_path(data = dat.coast.wc, aes(x = long, y = lat, group = group), 
-            color = "black", size = 0.25) + 
+year_sampled = as.numeric(sort(unique(hake_weight_age_df_updated$catch_year)))
+p0 <- ggplot() +
+  #geom_hline(yintercept = 49, col = "gray") + 
+  geom_point(data = pred_out[pred_out$catch_year > 1986,], aes(x = hb_longitude, y = hb_latitude, col = epsilon_st), 
+             size = 1.5, shape = 15) + # , color = as.factor(sex_description)
+  geom_polygon(data = dat.coast.wc, aes(x = long, y = lat, group = group), 
+            color = "white", size = 0.25, fill = "grey83") + 
   coord_map(projection = "mercator") + 
   scale_x_continuous(limits = xlims, expand = c(0, 0)) + 
   scale_y_continuous(limits = ylims, expand = c(0, 0)) + 
-  labs(x = "Longitude", y = "Latitude", color = "Spatial RE") +
-  scale_color_gradient2(low = "red", mid = "white",  high = "blue") +
-  #scale_color_viridis_c() +
-  #facet_wrap(~catch_year, ncol = 5) +
+  labs(x = "Longitude", y = "Latitude", color = "Spatiotemporal RE") +
+  scale_color_gradient2(low = "darkorchid3", mid = "white",  high = "green4") +
+  #scale_color_gradientn(colours = pnw_palette("Shuksan2",n = 3), values = c(-1.41,0,1)) +
+  facet_wrap(~catch_year, ncol = 8) +
   theme_classic() +
-  theme(axis.text=element_text(size=12),
-        axis.title = element_text(size=12)) 
+  theme(axis.text.y=element_text(size=12),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title = element_text(size=12))
+  
 
-jpeg("plots/output_exploration/spatiotemporalRE_map.jpeg", units="in", width=8, height=8, res=300)
+jpeg("plots/updated_output_exploration/stRE_map_year_wide.jpeg", units="in", width=15, height=9, res=300)
 p0
 dev.off()
 
