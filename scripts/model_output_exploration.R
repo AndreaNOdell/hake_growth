@@ -279,6 +279,11 @@ predict_df_fishery = predict(model_fishery)
 df_fishery = cbind(df_fishery, est = predict_df_fishery[,ncol(predict_df_fishery)])
 
 
+View(df_fishery %>% 
+  group_by(catch_month, catch_year,country) %>% 
+  summarise(n = n()) %>% 
+  filter(catch_month %in% c(12, 1, 2, 3)))
+
 df_fishery %>% 
   filter(new_age %in% c(10)) %>% 
   group_by(country, new_age, catch_year) %>% 
@@ -342,6 +347,16 @@ combined_df %>%
 dev.off()
 
 combined_df %>% 
+  filter(new_age %in% c(10)) %>% 
+  group_by(country, new_age, catch_year) %>% 
+  summarise(avg = mean(exp(est)), n = n()) %>% 
+  ggplot(aes(x = catch_year, y = avg, group = country)) +
+  geom_point(aes(col = country)) +
+  geom_line(aes(col = country)) +
+  labs(x = "year", y = "avg weight of 10 y/o") +
+  theme_classic()
+
+combined_df %>% 
   filter(new_age %in% c(5)) %>% 
   group_by(data_source, new_age, catch_year) %>% 
   summarise(avg = mean(exp(est)), n = n()) %>% 
@@ -352,18 +367,47 @@ combined_df %>%
   theme_classic()
 # the survey and fishery trends are fairly similar, with the exception of a few years (1993-1996 and 2007ish). We can see from the size of the points the sample size from each data source for the year. The survey contributes are larger sample size, but only for a subset of the years.
 
-jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_sex_data-source.jpeg", units="in", width=8, height=5, res = 300) 
+jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_sex_MFonly.jpeg", units="in", width=12, height=7, res = 600) 
 combined_df %>% 
   filter(catch_year >= min(survey_for_combined$catch_year)) %>%  
+  filter(!sex_description == "Undetermined") %>% 
+  group_by(sex_description, new_age) %>%  
+  summarise(avg = mean(exp(est)), n = n(), sd = sd(exp(est))) %>% 
+  ggplot(aes(x = new_age, y = avg, ymin = avg-sd, ymax = avg+sd, linetype = sex_description)) +
+  #geom_point(aes(shape = sex_description)) + 
+  geom_line(size = 1.3) + 
+  geom_ribbon(alpha = 0.25) +
+  scale_color_manual(values=c("#F05039", "#1F449C")) +
+  labs(x = "age", y = "estimated weight", linetype = "sex") +
+  theme_classic() +
+  lims(y = c(0,1.2)) +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15))
+dev.off()
+
+jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_sex_data-source_MFonly.jpeg", units="in", width=12, height=7, res = 600)
+combined_df %>% 
+  filter(catch_year >= min(survey_for_combined$catch_year)) %>% 
+  filter(!sex_description == "Undetermined") %>% 
   group_by(data_source, sex_description, new_age) %>%  
-  summarise(avg = mean(exp(est)), n = n()) %>% 
+  summarise(avg = mean(exp(est)), n = n(), sd = sd(exp(est))) %>% 
   ggplot(aes(x = new_age, y = avg)) +
-  geom_point(aes(col = sex_description, shape = data_source)) + 
-  geom_line(aes(col = sex_description, linetype = data_source)) + 
-  labs(x = "age", y = "avg weight") +
-  theme_classic()
+  #geom_point(aes(col = data_source, shape = sex_description)) + 
+  geom_line(aes(col = data_source, linetype = sex_description), size = 1.3) + 
+  scale_color_manual(values=c("#F05039", "#1F449C")) +
+  labs(x = "age", y = "estimated weight", linetype = "sex", color = "data source") +
+  theme_classic()+
+    lims(y = c(0,1)) +
+    theme(axis.title = element_text(size = 18),
+          axis.text = element_text(size = 15),
+          legend.text = element_text(size = 18),
+          legend.title = element_text(size = 18)) +
+  guides(linetype = "none")
 # the weight representation is similar between the fishery and survey for both males and females. The undetermined sex, which is primarily the fishery in Canada, has greater weight at age than the U.S.
 dev.off()
+
 
 jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_data-source.jpeg", units="in", width=8, height=5, res = 300)
 combined_df %>% 
@@ -377,16 +421,61 @@ combined_df %>%
   theme_classic()
 dev.off()
 
-jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_sex_country.jpeg", units="in", width=8, height=5, res = 300)
+jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_sex_country.jpeg", units="in", width=12, height=7, res = 600)
 combined_df %>% 
   filter(catch_year >= min(survey_for_combined$catch_year)) %>%  
   group_by(sex_description, country, new_age) %>% 
   summarise(avg = mean(exp(est)), n = n()) %>% 
   ggplot(aes(x = new_age, y = avg)) +
   #geom_point(aes(col = sex_description, shape = country)) +
-  geom_line(aes(col = sex_description, linetype = country)) +
-  labs(x = "age", y = "avg weight") +
-  theme_classic()
+  geom_line(aes(col = sex_description, linetype = country), size = 1) +
+  scale_color_manual(values=c("#F05039", "#1F449C", "darkgray")) +
+  labs(x = "age", y = "estimated weight", col = "sex") +
+  theme_classic() +
+  lims(y = c(0,1)) +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 15),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18)) 
+dev.off()
+
+jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_country_datasource.jpeg", units="in", width=12, height=7, res = 600)
+combined_df %>% 
+  filter(catch_year >= min(survey_for_combined$catch_year)) %>% 
+  #filter(!sex_description == "Undetermined") %>% 
+  group_by(data_source, country, new_age) %>% 
+  summarise(avg = mean(exp(est)), n = n()) %>% 
+  ggplot(aes(x = new_age, y = avg)) +
+  #geom_point(aes(col = sex_description, shape = country)) +
+  geom_line(aes(linetype = country, color = data_source), size = 1) + 
+  scale_color_manual(values=c("#F05039", "#1F449C")) +
+  labs(x = "age", y = "estimated weight", col = "data source") +
+  theme_classic() +
+  lims(y = c(0,1)) +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 15),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18)) +
+  guides(linetype = "none")
+dev.off()
+
+jpeg(filename = "plots/updated_output_exploration/combined/weight-at-age_country.jpeg", units="in", width=12, height=7, res = 600)
+combined_df %>% 
+  filter(catch_year >= min(survey_for_combined$catch_year)) %>% 
+  #filter(!sex_description == "Undetermined") %>% 
+  group_by(country, new_age) %>% 
+  summarise(avg = mean(exp(est)), n = n()) %>% 
+  ggplot(aes(x = new_age, y = avg)) +
+  #geom_point(aes(col = sex_description, shape = country)) +
+  geom_line(aes(linetype = country), size = 1) + 
+  scale_color_manual(values=c("#6e7cb9", "#d2848d")) +
+  labs(x = "age", y = "estimated weight", col = "data source") +
+  theme_classic() +
+  lims(y = c(0,1)) +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 15),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 18))
 dev.off()
 
 
@@ -395,7 +484,7 @@ combined_df <- group_by(combined_df, data_source, sex_description, new_age) %>%
   dplyr::mutate(m = mean(est),
                 anom_est = est-m)
 
-jpeg(filename = "plots/updated_output_exploration/combined/year_cohort_anomalies.jpeg", units="in", width=8, height=7, res = 300)
+jpeg(filename = "plots/updated_output_exploration/combined/year_cohort_anomalies_wide.jpeg", units="in", width=14, height=7, res = 300)
 combined_df %>%
   #filter(catch_year >= min(survey_for_combined$catch_year)) %>%  
   mutate(rem = catch_year-cohort) %>%
@@ -403,15 +492,19 @@ combined_df %>%
   dplyr::rename(Anomaly = anom_est) %>% 
   group_by(data_source, cohort, catch_year) %>% 
   summarise(avg_anom = mean(Anomaly), n = n()) %>% 
+  #filter(cohort %in% c(1982, 1999)) %>% 
 ggplot(aes(catch_year, cohort, col=avg_anom)) + 
-  geom_point(size = 3) + 
-  labs(x = "Year effect", y = "Cohort effect", col = "weight anomaly", size = "sample size") + 
+  geom_point(size = 6) + 
+  labs(x = "Year effect", y = "Cohort effect", col = "anomaly") + #, size = "sample size" 
   theme_classic() + 
-  scale_color_gradient2() + 
+  scale_color_gradient2(high = "green4", mid = "white", low = "darkorchid3",limits = c(-0.626, 0.915)) + 
   theme(strip.background=element_rect(fill="white"),
-        strip.text.x = element_text(size = 10),
+        #strip.text.x = element_text(size = 10),
         axis.text = element_text(size = 10),
-        axis.title = element_text(size = 14))+
+        axis.title = element_text(size = 18),
+        strip.text = element_text(size = 20))+
+  lims(y = c(min(combined_df$cohort), max(combined_df$cohort)),
+       x = c(min(combined_df$catch_year), max(combined_df$catch_year))) +
   facet_wrap(~data_source, ncol = 1) #+
   #geom_hline(yintercept = c(1980, 1984, 1999, 2010, 2014), linetype = 2, col = "gray")
 dev.off()
@@ -510,3 +603,5 @@ df_fishery %>%
   filter(new_age == 10) %>% 
   ggplot(aes(x = catch_month, y = weight)) +
   geom_point()
+
+
