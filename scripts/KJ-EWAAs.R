@@ -1,5 +1,5 @@
 # Predict WAA for 1) fishery and survey without spatial information and 2) just survey with spatial information
-# model includes age, year, month, cohort, and sex. 
+# model includes age, year, cohort, and sex. 
 
 
 # Set up ----------------
@@ -66,7 +66,6 @@ ewaa1_df_fishery = fishery_df %>% #fishery data
   mutate(source = "fishery")
 ewaa1_df = rbind(ewaa1_df_survey, ewaa1_df_fishery) # merge data sets - 225,163 obs.
 
-# age as smooth, year as random effect, cohort as smooth, sex as by-factor in age smoother, month maybe?
 
 # model
 m1 = sdmTMB( 
@@ -118,7 +117,7 @@ m2 = sdmTMB(
   family = lognormal(link = "log"),
   spatial = "off",
   time = "catch_year",
-  spatiotemporal = "ar1",
+  spatiotemporal = "iid",
   control = sdmTMBcontrol(newton_loops = 1),
   extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016, 2018, 2020)
 )
