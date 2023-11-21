@@ -59,10 +59,10 @@ fishery_df$country <- as.factor(fishery_df$country)
 
 # merge data sets
 ewaa1_df_survey = survey_df %>% # survey data
-  select(new_age, weight, fcatch_year, catch_month, cohort, sex_description, fcohort) %>% # select relevant columns
+  select(new_age, weight, catch_year, fcatch_year, catch_month, cohort, sex_description, fcohort) %>% # select relevant columns
   mutate(source = "survey")
 ewaa1_df_fishery = fishery_df %>% #fishery data
-  select(new_age, weight, fcatch_year, catch_month, cohort, sex_description, fcohort) %>% 
+  select(new_age, weight, catch_year, fcatch_year, catch_month, cohort, sex_description, fcohort) %>% 
   mutate(source = "fishery")
 ewaa1_df = rbind(ewaa1_df_survey, ewaa1_df_fishery) # merge data sets - 225,163 obs.
 
@@ -77,10 +77,18 @@ m1 = sdmTMB(
   control = sdmTMBcontrol(newton_loops = 1)
 )
 
-# get predictions
+# save model info
 model = m1
 data = model$data
 
+# expand prediction grid
+pred.grid = expand.grid(new_age = 0:15,
+                             catch_year = as.numeric(unique(data$catch_year)),
+                             sex_description = unique(data$sex_description)) %>%
+  mutate(fcohort = as.factor(catch_year - new_age)) %>% 
+  mutate(fcatch_year = as.factor(catch_year))
+
+# get predictions
 preds = predict(model)
 data = data %>% 
   mutate(est = preds[,ncol(preds)])
