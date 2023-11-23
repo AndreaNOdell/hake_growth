@@ -3,7 +3,7 @@
 
 
 # Set up ----------------
-library(dplyr)
+library(tidyverse)
 library(sf)
 library(sp)
 library(rgdal)
@@ -53,7 +53,6 @@ fishery_df$fcohort <- as.factor(fishery_df$cohort)
 fishery_df$country <- as.factor(fishery_df$country)
 
 
-
 # EWAA 1  -----------------------------
 # fishery and survey data, no spatial information
 
@@ -84,62 +83,104 @@ data = model$data
 # expand prediction grid
 pred.grid = expand.grid(new_age = 0:15,
                              catch_year = as.numeric(unique(data$catch_year)),
-                             sex_description = unique(data$sex_description)) %>%
+                             sex_description = c("Male", "Female")) %>%
   mutate(fcohort = as.factor(catch_year - new_age)) %>% 
   mutate(fcatch_year = as.factor(catch_year))
 
 # get predictions
-preds = predict(model)
-data = data %>% 
-  mutate(est = preds[,ncol(preds)])
+preds = predict(model, newdata = pred.grid) 
+preds = preds %>% 
+  mutate(est_weight = exp(est))
+
+ggplot(preds[preds$sex_description == "Female",], aes(x = new_age, y = est_weight)) + 
+  geom_line(aes(col = fcohort)) +
+  theme(legend.position = "none") +
+  labs(subtitle = "female weight-at-age per cohort")
+
+# data = data %>% 
+#   mutate(est = preds[,ncol(preds)])
 
 # make EWAA
-ewaa1_2sources_nospatial = as.data.frame(data %>% 
+ewaa1_2sources_nospatial = as.data.frame(preds %>% 
   group_by(fcatch_year, new_age) %>% 
-  summarise(n = n(), pred_weight = mean(exp(est))) )
+  summarise(n = n(), pred_weight = mean(exp(est))))
 ewaa1_2sources_nospatial$catch_year = as.numeric(as.character(ewaa1_2sources_nospatial$fcatch_year))
+
 ewaa1_long = ewaa1_2sources_nospatial %>% 
   select(catch_year, new_age, pred_weight)
 
 ewaa1_wide = as.matrix(pivot_wider(ewaa1_long, names_from = new_age, values_from = pred_weight) %>% 
   relocate(`0`, .before = `1`))
 
-write.csv(ewaa1_long, "outputs/nospatial_long.csv", row.names=FALSE)
-write.csv(ewaa1_wide, "outputs/nospatial_wide.csv", row.names=FALSE)
+write.csv(ewaa1_long, "outputs/nospatial_long_complete.csv", row.names=FALSE)
+write.csv(ewaa1_wide, "outputs/nospatial_wide_complete.csv", row.names=FALSE)
 
 # EWAA 2  -----------------------------
 # survey data only with spatial information
 
 # data is just the survey_df
-ewaa2_df = survey_df %>% 
+ewaa2_df = survey_df[!survey_df$sex_description == "Unsexed",] %>% 
   select(new_age, weight, fcatch_year, catch_year, fcohort, catch_month, cohort, sex_description,  X, Y, hb_latitude, hb_longitude, geometry)
 ewaa2_df$catch_year = as.numeric(ewaa2_df$catch_year)
+ewaa2_df = droplevels(ewaa2_df)
+
 
 # model
 mesh <- make_mesh(ewaa2_df, xy_cols = c("X", "Y"), cutoff = 40)
   
 m2 = sdmTMB( 
   data = ewaa2_df,
-  formula = weight ~ 1 + s(new_age) + (1|fcohort) + sex_description,
+  formula = weight ~ 1 + s(new_age) + (1|fcohort)  + sex_description ,
   mesh = mesh,
   family = lognormal(link = "log"),
-  spatial = "off",
   time = "catch_year",
-  spatiotemporal = "iid",
+  spatial = "off",
+  spatiotemporal = "ar1",
   control = sdmTMBcontrol(newton_loops = 1),
   extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016, 2018, 2020)
 )
 
-# get predictions
+m2.1 = sdmTMB( 
+  data = ewaa2_df,
+  formula = weight ~ 1 + s(new_age) + (1|fcohort)  + sex_description ,
+  mesh = mesh,
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "off",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016, 2018, 2020)
+)
+
+# save model info
 model = m2
 data = model$data
 
-preds = predict(model)
-data = data %>% 
-  mutate(est = preds[,ncol(preds)-3])
+# expand grid
+pred.grid = expand.grid(new_age = 0:15, # specify all age classes
+              catch_year = as.numeric(sort(unique(data$catch_year))), # specify all years
+              sex_description = c("Male", "Female")) %>% # specify both sex
+  mutate(fcohort = as.factor(catch_year - new_age))
+unique.coords = unique(data[,c("X", "Y", "catch_year")]) 
+  # only use spatial locations sampled in a given year (estimation crashes when estimating outside the sampling locations in a given year, but will try to resolve this later)
+pred.grid.sp = left_join(unique.coords, pred.grid)
+
+# make predictions
+preds = predict(model, newdata = pred.grid.sp)
+#save(preds, file = "results/sdmTMB/ewaa_preds/preds.RData")
+
+# quick visualization of WAA curves 
+preds %>%  
+  group_by(new_age, fcohort, sex_description) %>% 
+  summarise(est_weight = mean(exp(est))) %>% 
+  filter(sex_description == "Female") %>% 
+ggplot( aes(x = new_age, y = est_weight)) + 
+  geom_line(aes(col = fcohort)) +
+  theme(legend.position = "none") +
+  labs(subtitle = "female weight-at-age per cohort")
 
 
-ewaa2_survey_spatial = as.data.frame(data %>% 
+ewaa2_survey_spatial = as.data.frame(preds %>% 
   group_by(catch_year, new_age) %>% 
   summarise(n = n(), pred_weight = mean(exp(est))))
 ewaa2_long = ewaa2_survey_spatial %>% 
@@ -148,5 +189,5 @@ ewaa2_long = ewaa2_survey_spatial %>%
 ewaa2_wide = as.matrix(pivot_wider(ewaa2_long, names_from = new_age, values_from = pred_weight) %>% 
   relocate(`0`, .before = `1`))
 
-write.csv(ewaa2_long, "outputs/spatial_long.csv", row.names=FALSE)
-write.csv(ewaa2_wide, "outputs/spatial_wide.csv", row.names=FALSE)
+write.csv(ewaa2_long, "outputs/spatial_long_complete.csv", row.names=FALSE)
+write.csv(ewaa2_wide, "outputs/spatial_wide_complete.csv", row.names=FALSE)
