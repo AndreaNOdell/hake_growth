@@ -140,18 +140,6 @@ m2 = sdmTMB(
   extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016, 2018, 2020)
 )
 
-m2.1 = sdmTMB( 
-  data = ewaa2_df,
-  formula = weight ~ 1 + s(new_age) + (1|fcohort)  + sex_description ,
-  mesh = mesh,
-  family = lognormal(link = "log"),
-  time = "catch_year",
-  spatial = "off",
-  spatiotemporal = "ar1",
-  control = sdmTMBcontrol(newton_loops = 1),
-  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016, 2018, 2020)
-)
-
 # save model info
 model = m2
 data = model$data
