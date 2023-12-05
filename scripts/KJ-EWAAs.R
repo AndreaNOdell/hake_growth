@@ -64,6 +64,7 @@ ewaa1_df_fishery = fishery_df %>% #fishery data
   select(new_age, weight, catch_year, fcatch_year, catch_month, cohort, sex_description, fcohort) %>% 
   mutate(source = "fishery")
 ewaa1_df = rbind(ewaa1_df_survey, ewaa1_df_fishery) # merge data sets - 225,163 obs.
+ewaa1_df$catch_year = as.numeric(ewaa1_df$catch_year)
 
 
 # model
@@ -76,16 +77,27 @@ m1 = sdmTMB(
   control = sdmTMBcontrol(newton_loops = 1)
 )
 
+m1.simple = sdmTMB( 
+  data = ewaa1_df,
+  formula = weight ~ 0 + s(new_age),
+  time_varying = ~ 1,
+  time = "catch_year",
+  family = lognormal(link = "log"),
+  spatial = "off",
+  spatiotemporal = "off",
+  control = sdmTMBcontrol(newton_loops = 1)
+)
+
 # save model info
-model = m1
+model = m1.simple
 data = model$data
 
 # expand prediction grid
 pred.grid = expand.grid(new_age = 0:15,
-                             catch_year = as.numeric(unique(data$catch_year)),
-                             sex_description = c("Male", "Female")) %>%
-  mutate(fcohort = as.factor(catch_year - new_age)) %>% 
-  mutate(fcatch_year = as.factor(catch_year))
+                             catch_year = as.numeric(unique(data$catch_year))) #,
+                             #sex_description = c("Male", "Female")) %>%
+  #mutate(fcohort = as.factor(catch_year - new_age)) %>% 
+  #mutate(fcatch_year = as.factor(catch_year))
 
 # get predictions
 preds = predict(model, newdata = pred.grid) 
@@ -102,9 +114,9 @@ ggplot(preds[preds$sex_description == "Female",], aes(x = new_age, y = est_weigh
 
 # make EWAA
 ewaa1_2sources_nospatial = as.data.frame(preds %>% 
-  group_by(fcatch_year, new_age) %>% 
+  group_by(catch_year, new_age) %>% 
   summarise(n = n(), pred_weight = mean(exp(est))))
-ewaa1_2sources_nospatial$catch_year = as.numeric(as.character(ewaa1_2sources_nospatial$fcatch_year))
+#ewaa1_2sources_nospatial$catch_year = as.numeric(as.character(ewaa1_2sources_nospatial$fcatch_year))
 
 ewaa1_long = ewaa1_2sources_nospatial %>% 
   select(catch_year, new_age, pred_weight)
@@ -112,8 +124,8 @@ ewaa1_long = ewaa1_2sources_nospatial %>%
 ewaa1_wide = as.matrix(pivot_wider(ewaa1_long, names_from = new_age, values_from = pred_weight) %>% 
   relocate(`0`, .before = `1`))
 
-write.csv(ewaa1_long, "outputs/nospatial_long_complete.csv", row.names=FALSE)
-write.csv(ewaa1_wide, "outputs/nospatial_wide_complete.csv", row.names=FALSE)
+write.csv(ewaa1_long, "outputs/nospatial_long_simple.csv", row.names=FALSE)
+write.csv(ewaa1_wide, "outputs/nospatial_wide_simple.csv", row.names=FALSE)
 
 # EWAA 2  -----------------------------
 # survey data only with spatial information
@@ -140,18 +152,30 @@ m2 = sdmTMB(
   extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016, 2018, 2020)
 )
 
+m2.simple = sdmTMB( 
+  data = ewaa2_df,
+  formula = weight ~ 1 + s(new_age) ,
+  mesh = mesh,
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "off",
+  spatiotemporal = "ar1",
+  control = sdmTMBcontrol(newton_loops = 1),
+  extra_time = c(1987, 1988, 1990, 1991, 1993, 1994, 1996, 1997, 1999, 2000, 2002, 2004, 2006, 2008, 2010, 2014, 2016, 2018, 2020)
+)
+
 # save model info
-model = m2
+model = m2.simple
 data = model$data
 
 # expand grid
 pred.grid = expand.grid(new_age = 0:15, # specify all age classes
-              catch_year = as.numeric(sort(unique(data$catch_year))), # specify all years
-              sex_description = c("Male", "Female")) %>% # specify both sex
-  mutate(fcohort = as.factor(catch_year - new_age))
-unique.coords = unique(data[,c("X", "Y", "catch_year")]) 
+              catch_year = as.numeric(sort(unique(data$catch_year)))) #, # specify all years
+              #sex_description = c("Male", "Female")) %>% # specify both sex
+ # mutate(fcohort = as.factor(catch_year - new_age))
+unique.coords = unique(data[,c("X", "Y")])  # , "catch_year"
   # only use spatial locations sampled in a given year (estimation crashes when estimating outside the sampling locations in a given year, but will try to resolve this later)
-pred.grid.sp = left_join(unique.coords, pred.grid)
+pred.grid.sp = cross_join(unique.coords, pred.grid)
 
 # make predictions
 preds = predict(model, newdata = pred.grid.sp)
@@ -177,5 +201,49 @@ ewaa2_long = ewaa2_survey_spatial %>%
 ewaa2_wide = as.matrix(pivot_wider(ewaa2_long, names_from = new_age, values_from = pred_weight) %>% 
   relocate(`0`, .before = `1`))
 
-write.csv(ewaa2_long, "outputs/spatial_long_complete.csv", row.names=FALSE)
-write.csv(ewaa2_wide, "outputs/spatial_wide_complete.csv", row.names=FALSE)
+write.csv(ewaa2_long, "outputs/spatial_long_simple.csv", row.names=FALSE)
+write.csv(ewaa2_wide, "outputs/spatial_wide_simple.csv", row.names=FALSE)
+
+# EWAA 3  -----------------------------
+# Fishery data only with no spatial information
+
+# data is just the fishery_df
+ewaa3_df = fishery_df %>% #fishery data
+  select(new_age, weight, catch_year, fcatch_year, catch_month, cohort, sex_description, fcohort)
+
+m3.simple = sdmTMB( 
+  data = ewaa3_df,
+  formula = weight ~ 0 + s(new_age),
+  time_varying = ~ 1,
+  family = lognormal(link = "log"),
+  time = "catch_year",
+  spatial = "off",
+  spatiotemporal = "off",
+  control = sdmTMBcontrol(newton_loops = 1)
+)
+
+# save model info
+model = m3.simple
+data = model$data
+
+# expand grid
+pred.grid = expand.grid(new_age = 0:15, # specify all age classes
+                        catch_year = as.numeric(sort(unique(data$catch_year)))) #, # specify all years
+#sex_description = c("Male", "Female")) %>% # specify both sex
+# mutate(fcohort = as.factor(catch_year - new_age))
+
+# make predictions
+preds = predict(model, newdata = pred.grid)
+#save(preds, file = "results/sdmTMB/ewaa_preds/preds.RData")
+
+ewaa3_fishery = as.data.frame(preds %>% 
+                                group_by(catch_year, new_age) %>% 
+                                summarise(n = n(), pred_weight = mean(exp(est))))
+ewaa3_long = ewaa3_fishery %>% 
+  select(catch_year, new_age, pred_weight)
+
+ewaa3_wide = as.matrix(pivot_wider(ewaa3_long, names_from = new_age, values_from = pred_weight) %>% 
+                         relocate(`0`, .before = `1`))
+
+write.csv(ewaa3_long, "outputs/fishery_only_long.csv", row.names=FALSE)
+write.csv(ewaa3_wide, "outputs/fishery_only_wide.csv", row.names=FALSE)
