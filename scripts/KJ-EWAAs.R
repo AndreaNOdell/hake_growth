@@ -12,7 +12,69 @@ library(sdmTMB)
 library(visreg)
 
 
-# Load in Data -----------
+# EWAA w/ 2023 data ----------------------------
+# This is the updated model run that includes survey adn fishery data up to 2023. 
+# I fit a model with a smoother on age, year as a RE, cohort as a RE, and sex as linear predictor to estimate weight (weight ~ 1 + s(age) + (1|fcohort) + (1|fyear) + sex).
+
+# Load in data
+can_df = read.csv("raw_data/KJ_EWAA_data/can-weight-at-age.csv") %>% 
+  mutate(data_type = "fishery", country = "canada")
+cols = colnames(can_df)
+us_df = read.csv("raw_data/KJ_EWAA_data/us-weight-at-age.csv") %>% 
+  select(any_of(cols)) %>%
+  mutate(data_type = "fishery", country = "usa") 
+survey_df = read.csv("raw_data/KJ_EWAA_data/survey-weight-at-age.csv") %>% 
+  select(any_of(cols)) %>%
+  mutate(data_type = "survey",
+         country = ifelse(Source == "Canada Acoustic", "canada", "usa")) 
+
+# bind data together 
+df = rbind(can_df, us_df, survey_df) %>% 
+  mutate(cohort = Year - Age_yrs, 
+         Sex = replace_na(Sex, "U"),
+         fyear = as.factor(Year),
+         fcohort = as.factor(cohort)) %>% # create cohort info, set sex NAs to "U"
+  rename(weight = Weight_kg, sex = Sex, age = Age_yrs)
+colnames(df) = tolower(colnames(df))
+
+# model
+m1 = sdmTMB( 
+  data = df,
+  formula = weight ~ 1 + s(age) + (1|fcohort) + (1|fyear) + sex,
+  family = lognormal(link = "log"),
+  spatial = "off",
+  spatiotemporal = "off",
+  time = "year",
+  control = sdmTMBcontrol(newton_loops = 1)
+)
+
+pred_grid = expand.grid(year = unique(df$year),
+                        sex = unique(df$sex),
+                        age = 0:15) %>% 
+  mutate(cohort = year - age,
+         fyear = as.factor(year),
+         fcohort = as.factor(cohort))
+
+preds = predict(m1, newdata = pred_grid) 
+preds = preds %>% 
+  mutate(est_weight = exp(est))
+
+# make EWAA
+ewaa = as.data.frame(preds %>% 
+                       group_by(year, age) %>% 
+                       summarise(n = n(), pred_weight = mean(exp(est))))
+
+ewaa_long = ewaa %>% 
+  select(year, age, pred_weight)
+
+ewaa_wide = as.matrix(pivot_wider(ewaa_long, names_from = age, values_from = pred_weight) %>% 
+                         relocate(`0`, .before = `1`))
+
+write.csv(ewaa_long, "outputs/EWAA_fishery_survey_nospatial_1975-2023_long.csv", row.names=FALSE)
+write.csv(ewaa_wide, "outputs/EWAA_fishery_survey_nospatial_1975-2023_wide.csv", row.names=FALSE)
+
+# OLD ------
+## Load in Data -----------
 
 # Survey data
 load("results/hake_weight_age_df_updated.RData")
@@ -53,7 +115,7 @@ fishery_df$fcohort <- as.factor(fishery_df$cohort)
 fishery_df$country <- as.factor(fishery_df$country)
 
 
-# EWAA 1  -----------------------------
+## EWAA 1  -----------------------------
 # fishery and survey data, no spatial information
 
 # merge data sets
@@ -127,7 +189,7 @@ ewaa1_wide = as.matrix(pivot_wider(ewaa1_long, names_from = new_age, values_from
 write.csv(ewaa1_long, "outputs/nospatial_long_simple.csv", row.names=FALSE)
 write.csv(ewaa1_wide, "outputs/nospatial_wide_simple.csv", row.names=FALSE)
 
-# EWAA 2  -----------------------------
+## EWAA 2  -----------------------------
 # survey data only with spatial information
 
 # data is just the survey_df
@@ -204,7 +266,7 @@ ewaa2_wide = as.matrix(pivot_wider(ewaa2_long, names_from = new_age, values_from
 write.csv(ewaa2_long, "outputs/spatial_long_simple.csv", row.names=FALSE)
 write.csv(ewaa2_wide, "outputs/spatial_wide_simple.csv", row.names=FALSE)
 
-# EWAA 3  -----------------------------
+## EWAA 3  -----------------------------
 # Fishery data only with no spatial information
 
 # data is just the fishery_df
@@ -247,3 +309,8 @@ ewaa3_wide = as.matrix(pivot_wider(ewaa3_long, names_from = new_age, values_from
 
 write.csv(ewaa3_long, "outputs/fishery_only_long.csv", row.names=FALSE)
 write.csv(ewaa3_wide, "outputs/fishery_only_wide.csv", row.names=FALSE)
+
+
+
+
+
