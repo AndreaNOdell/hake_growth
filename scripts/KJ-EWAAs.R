@@ -13,6 +13,7 @@ library(visreg)
 
 
 # EWAA w/ 2023 data ----------------------------
+
 # This is the updated model run that includes survey adn fishery data up to 2023. 
 # I fit a model with a smoother on age, year as a RE, cohort as a RE, and sex as linear predictor to estimate weight (weight ~ 1 + s(age) + (1|fcohort) + (1|fyear) + sex).
 
@@ -48,6 +49,7 @@ m1 = sdmTMB(
   control = sdmTMBcontrol(newton_loops = 1)
 )
 
+# create prediction grid
 pred_grid = expand.grid(year = unique(df$year),
                         sex = unique(df$sex),
                         age = 0:15) %>% 
@@ -55,6 +57,7 @@ pred_grid = expand.grid(year = unique(df$year),
          fyear = as.factor(year),
          fcohort = as.factor(cohort))
 
+# Get estimates
 preds = predict(m1, newdata = pred_grid) 
 preds = preds %>% 
   mutate(est_weight = exp(est))
